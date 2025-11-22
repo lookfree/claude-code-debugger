@@ -9,23 +9,55 @@ This Electron-based desktop application provides a visual interface for managing
 ## Project Structure
 
 ```
-skills-ui/
+claude-code-debugger/
 ├── electron/              # Electron main process
 │   ├── main.ts           # Main process entry point
 │   ├── preload.cjs       # Preload script (CommonJS)
-│   ├── ipc.ts            # IPC handlers
+│   ├── ipc/              # IPC handlers (modular)
+│   │   ├── index.ts      # Main IPC registry
+│   │   ├── skills.ts     # Skills IPC handlers
+│   │   ├── hooks.ts      # Hooks IPC handlers
+│   │   ├── mcp.ts        # MCP IPC handlers
+│   │   ├── commands.ts   # Commands IPC handlers
+│   │   ├── agents.ts     # Agents IPC handlers
+│   │   └── claudemd.ts   # CLAUDE.md IPC handlers
 │   └── services/         # Backend services
 │       └── file-manager.ts  # File system operations
 ├── src/                  # React frontend
 │   ├── App.tsx          # Main app component
+│   ├── main.tsx         # Entry point with i18n init
+│   ├── i18n/            # Internationalization
+│   │   ├── index.ts     # i18n configuration
+│   │   ├── config.ts    # Language settings
+│   │   └── locales/     # Translation files
+│   │       ├── en/      # English translations
+│   │       │   ├── common.json
+│   │       │   ├── layout.json
+│   │       │   └── dashboard.json
+│   │       └── zh/      # Chinese translations
+│   │           ├── common.json
+│   │           ├── layout.json
+│   │           └── dashboard.json
 │   ├── pages/           # Page components
-│   │   ├── Skills.tsx   # Skills browser
-│   │   ├── Agents.tsx   # Agents manager
-│   │   ├── Hooks.tsx    # Hooks configurator
-│   │   ├── MCP.tsx      # MCP servers manager
-│   │   └── Commands.tsx # Slash commands editor
+│   │   ├── Dashboard.tsx   # Dashboard overview
+│   │   ├── Skills.tsx      # Skills browser
+│   │   ├── Agents.tsx      # Agents manager
+│   │   ├── Hooks.tsx       # Hooks configurator
+│   │   ├── MCP.tsx         # MCP servers manager
+│   │   ├── Commands.tsx    # Slash commands editor
+│   │   ├── ClaudeMd.tsx    # CLAUDE.md file manager
+│   │   ├── Graph.tsx       # Dependency graph
+│   │   └── Settings.tsx    # Settings page
 │   ├── components/      # Reusable UI components
+│   │   ├── layout/
+│   │   │   ├── Layout.tsx          # Main layout
+│   │   │   └── LanguageSwitcher.tsx # Language selector
+│   │   └── ui/          # shadcn/ui components
+│   ├── stores/          # State management
+│   │   └── languageStore.ts  # Language state (Zustand)
 │   └── lib/            # Utilities and API client
+│       ├── api.ts      # Frontend API wrapper
+│       └── utils.ts    # Utility functions
 ├── shared/              # Shared TypeScript types
 │   └── types/          # Type definitions
 └── dist-electron/       # Built electron files
@@ -140,6 +172,11 @@ Manages all file operations for Claude Code components:
 ### State Management
 - **Zustand** - Lightweight state management
 - **React Router** - Client-side routing
+
+### Internationalization
+- **i18next** - Internationalization framework
+- **react-i18next** - React bindings for i18next
+- **i18next-browser-languagedetector** - Automatic language detection
 
 ### Build Tools
 - **vite-plugin-electron** - Electron integration for Vite
@@ -271,13 +308,134 @@ rm -rf dist-electron dist node_modules/.vite       # Clean build artifacts
 4. **Error Handling** - Never crash, always return empty arrays/objects on error
 5. **User Experience** - Provide immediate feedback for all actions
 
+## Features
+
+### ✅ Implemented Features
+
+- **Multi-language Support** - English and Chinese with seamless switching
+- **Dashboard** - Overview of all Claude Code components
+- **CLAUDE.md Manager** - Browse and edit CLAUDE.md files across projects
+- **Skills Browser** - View and manage Claude Code skills
+- **Commands Manager** - Manage slash commands
+- **MCP Servers** - Configure and manage MCP servers
+- **Hooks Manager** - Configure and test hooks
+- **Dependency Graph** - Visualize component relationships
+- **Settings** - Application configuration
+- **Language Switcher** - Easy language selection in sidebar
+
+### 🔧 Recent Fixes
+
+- **Graph.tsx Null Safety** - Fixed node data structure inconsistency
+  - Updated node type definitions to use nested `data` structure
+  - Added defensive checks for undefined node.data access
+  - Resolved "Cannot read properties of undefined (reading 'label')" error
+
+- **Internationalization (i18n)** - Complete Chinese and English support
+  - Automatic language detection from browser/localStorage
+  - Persistent language selection
+  - Seamless language switching without page reload
+  - TypeScript support for translation keys
+
+## Internationalization (i18n)
+
+### Language Support
+
+The application supports multiple languages with easy switching:
+
+- **Supported Languages**: English (en), Chinese (zh)
+- **Default Language**: English
+- **Detection**: Auto-detects browser language on first load
+- **Persistence**: Selected language saved to localStorage
+
+### Translation Structure
+
+```
+src/i18n/locales/
+├── en/
+│   ├── common.json      # Buttons, labels, messages
+│   ├── layout.json      # Navigation, app title
+│   └── dashboard.json   # Dashboard page
+└── zh/
+    ├── common.json
+    ├── layout.json
+    └── dashboard.json
+```
+
+### Adding New Translations
+
+1. **Add translation files** for new pages:
+```bash
+# Create translation files
+touch src/i18n/locales/en/newpage.json
+touch src/i18n/locales/zh/newpage.json
+```
+
+2. **Import in `src/i18n/index.ts`**:
+```typescript
+import newpageEn from './locales/en/newpage.json'
+import newpageZh from './locales/zh/newpage.json'
+
+export const resources = {
+  en: {
+    // ...
+    newpage: newpageEn,
+  },
+  zh: {
+    // ...
+    newpage: newpageZh,
+  },
+}
+```
+
+3. **Use in components**:
+```typescript
+import { useTranslation } from 'react-i18next'
+
+function MyComponent() {
+  const { t } = useTranslation('newpage')
+  return <h1>{t('title')}</h1>
+}
+```
+
+### Translation Best Practices
+
+- **Namespace by page**: Use separate JSON files for each page
+- **Common translations**: Put shared text in `common.json`
+- **Structured keys**: Use nested objects for organization
+- **Dynamic values**: Use interpolation `{{variable}}`
+- **Pluralization**: Use i18next plural rules when needed
+
+Example translation file:
+```json
+{
+  "title": "Page Title",
+  "button": {
+    "save": "Save",
+    "cancel": "Cancel"
+  },
+  "message": {
+    "success": "Operation successful",
+    "error": "An error occurred"
+  },
+  "dynamicText": "Welcome, {{name}}!"
+}
+```
+
 ## Roadmap
 
-- [ ] Agents page implementation
-- [ ] Hooks configuration and testing
-- [ ] MCP servers management and testing
-- [ ] Slash commands editor
-- [ ] Dependency graph visualization
-- [ ] Real-time file watching and updates
-- [ ] Export/import functionality
+### High Priority
+- [ ] Complete i18n for all pages (Skills, Commands, MCP, Hooks, etc.)
+- [ ] Real-time file watching and auto-refresh
+- [ ] Export/import functionality for configurations
+
+### Medium Priority
 - [ ] Search and filtering across all components
+- [ ] Agents page full implementation
+- [ ] Testing and debugging tools integration
+- [ ] Performance optimization and caching
+
+### Low Priority
+- [ ] Dark/Light theme support
+- [ ] Keyboard shortcuts
+- [ ] Configuration backup and restore
+- [ ] Plugin system for extensions
