@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Electron API</title>
+</head>
+<body>
+    <h1>Test Electron API</h1>
+    <button onclick="testAPI()">Test getSkills()</button>
+    <pre id="output"></pre>
+
+    <script>
+        async function testAPI() {
+            const output = document.getElementById('output');
+            output.textContent = 'Testing...\n';
+
+            // Check if electronAPI exists
+            output.textContent += 'window.electronAPI: ' + (window.electronAPI ? 'EXISTS' : 'UNDEFINED') + '\n';
+
+            if (window.electronAPI) {
+                output.textContent += 'electronAPI.getSkills: ' + (typeof window.electronAPI.getSkills) + '\n';
+
+                try {
+                    const skills = await window.electronAPI.getSkills();
+                    output.textContent += 'Skills count: ' + skills.length + '\n';
+                    output.textContent += JSON.stringify(skills, null, 2);
+                } catch (error) {
+                    output.textContent += 'Error: ' + error.message + '\n';
+                    output.textContent += error.stack;
+                }
+            }
+        }
+
+        // Auto test on load
+        window.addEventListener('load', () => {
+            console.log('[Test] window.electronAPI:', window.electronAPI);
+            testAPI();
+        });
+    </script>
+</body>
+</html>
