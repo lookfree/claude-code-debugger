@@ -1,0 +1,16 @@
+{
+  "appTitle": "Claude Debugger",
+  "appName": "Claude Code Debugger",
+  "version": "v{{version}}",
+  "nav": {
+    "dashboard": "Dashboard",
+    "claudeMd": "CLAUDE.md",
+    "commands": "Commands",
+    "agents": "Subagents",
+    "mcp": "MCP Servers",
+    "skills": "Skills",
+    "hooks": "Hooks",
+    "graph": "Dependency Graph",
+    "settings": "Settings"
+  }
+}

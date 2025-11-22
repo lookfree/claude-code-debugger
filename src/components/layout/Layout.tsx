@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import {
   Zap,
@@ -11,25 +12,27 @@ import {
   Settings,
   FileText,
 } from 'lucide-react'
+import { LanguageSwitcher } from './LanguageSwitcher'
 
 interface LayoutProps {
   children: React.ReactNode
 }
 
-const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'CLAUDE.md', href: '/claude-md', icon: FileText },
-  { name: 'Commands', href: '/commands', icon: Terminal },
-  { name: 'Subagents', href: '/agents', icon: Bot },
-  { name: 'MCP Servers', href: '/mcp', icon: Server },
-  { name: 'Skills', href: '/skills', icon: Zap },
-  { name: 'Hooks', href: '/hooks', icon: Webhook },
-  { name: 'Dependency Graph', href: '/graph', icon: GitBranch },
-  { name: 'Settings', href: '/settings', icon: Settings },
-]
+const navigationKeys = [
+  { key: 'dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { key: 'claudeMd', href: '/claude-md', icon: FileText },
+  { key: 'commands', href: '/commands', icon: Terminal },
+  { key: 'agents', href: '/agents', icon: Bot },
+  { key: 'mcp', href: '/mcp', icon: Server },
+  { key: 'skills', href: '/skills', icon: Zap },
+  { key: 'hooks', href: '/hooks', icon: Webhook },
+  { key: 'graph', href: '/graph', icon: GitBranch },
+  { key: 'settings', href: '/settings', icon: Settings },
+] as const
 
 export function Layout({ children }: LayoutProps) {
   const location = useLocation()
+  const { t } = useTranslation('layout')
 
   return (
     <div className="flex h-screen bg-background">
@@ -37,16 +40,16 @@ export function Layout({ children }: LayoutProps) {
       <div className="w-64 border-r border-border bg-card flex flex-col">
         {/* Header */}
         <div className="h-14 border-b border-border flex items-center px-6">
-          <h1 className="text-lg font-bold text-foreground">Claude Debugger</h1>
+          <h1 className="text-lg font-bold text-foreground">{t('appTitle')}</h1>
         </div>
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-          {navigation.map((item) => {
+          {navigationKeys.map((item) => {
             const isActive = location.pathname === item.href
             return (
               <Link
-                key={item.name}
+                key={item.key}
                 to={item.href}
                 className={cn(
                   'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
@@ -56,17 +59,18 @@ export function Layout({ children }: LayoutProps) {
                 )}
               >
                 <item.icon className="w-5 h-5" />
-                {item.name}
+                {t(`nav.${item.key}`)}
               </Link>
             )
           })}
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-border p-4">
+        <div className="border-t border-border p-4 space-y-3">
+          <LanguageSwitcher />
           <div className="text-xs text-muted-foreground">
-            <p>Claude Code Debugger</p>
-            <p className="mt-1">v0.1.0</p>
+            <p>{t('appName')}</p>
+            <p className="mt-1">{t('version', { version: '0.1.0' })}</p>
           </div>
         </div>
       </div>
