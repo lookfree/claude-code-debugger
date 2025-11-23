@@ -12,17 +12,46 @@ import type {
 export const api = {
   // Skills
   skills: {
-    getAll: (): Promise<Skill[]> => {
+    getAll: async (): Promise<Skill[]> => {
       console.log('[API] window.electronAPI:', window.electronAPI)
       if (!window.electronAPI) {
         console.error('[API] window.electronAPI is undefined!')
-        return Promise.resolve([])
+        throw new Error('Electron API not available')
       }
-      return window.electronAPI.getSkills()
+      try {
+        return await window.electronAPI.getSkills()
+      } catch (error) {
+        console.error('[API] Failed to get skills:', error)
+        throw error
+      }
     },
-    get: (name: string): Promise<Skill> => window.electronAPI.getSkill(name),
-    save: (skill: Skill): Promise<void> => window.electronAPI.saveSkill(skill),
-    delete: (name: string): Promise<void> => window.electronAPI.deleteSkill(name),
+    get: async (name: string): Promise<Skill | null> => {
+      if (!window.electronAPI) throw new Error('Electron API not available')
+      try {
+        return await window.electronAPI.getSkill(name)
+      } catch (error) {
+        console.error(`[API] Failed to get skill "${name}":`, error)
+        throw error
+      }
+    },
+    save: async (skill: Skill): Promise<void> => {
+      if (!window.electronAPI) throw new Error('Electron API not available')
+      try {
+        return await window.electronAPI.saveSkill(skill)
+      } catch (error) {
+        console.error('[API] Failed to save skill:', error)
+        throw error
+      }
+    },
+    delete: async (name: string): Promise<void> => {
+      if (!window.electronAPI) throw new Error('Electron API not available')
+      try {
+        return await window.electronAPI.deleteSkill(name)
+      } catch (error) {
+        console.error(`[API] Failed to delete skill "${name}":`, error)
+        throw error
+      }
+    },
   },
 
   // Agents

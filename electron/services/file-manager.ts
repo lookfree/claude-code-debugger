@@ -11,6 +11,47 @@ export class FileManager {
   private watcher: FSWatcher | null = null
   private changeCallbacks: Array<(files: ConfigFile[]) => void> = []
 
+  // Constants for security and performance
+  private readonly MAX_SCAN_DEPTH = 3
+  private readonly MAX_FILES_TO_SCAN = 1000
+  private readonly SCAN_TIMEOUT_MS = 10000 // 10 seconds
+  private readonly ALLOWED_SCAN_ROOTS = [
+    path.join(os.homedir(), 'Documents'),
+    path.join(os.homedir(), 'Projects'),
+    path.join(os.homedir(), 'Developer'),
+    path.join(os.homedir(), 'dev'),
+    path.join(os.homedir(), 'workspace'),
+    path.join(os.homedir(), 'code'),
+    path.join(os.homedir(), 'src'),
+  ]
+
+  // Skip these directories for security and performance
+  private readonly SKIP_DIRECTORIES = new Set([
+    'node_modules',
+    'vendor',
+    'dist',
+    'build',
+    'out',
+    'target',
+    '__pycache__',
+    'venv',
+    'env',
+    '.git',
+    '.svn',
+    '.hg',
+    'bower_components',
+  ])
+
+  // Cache for parsed skills
+  private skillCache = new Map<string, { skill: Skill; mtime: number }>()
+
+  // Logger with levels
+  private logger = {
+    info: (msg: string, ...args: unknown[]) => console.log(`[FileManager][INFO]`, msg, ...args),
+    warn: (msg: string, ...args: unknown[]) => console.warn(`[FileManager][WARN]`, msg, ...args),
+    error: (msg: string, ...args: unknown[]) => console.error(`[FileManager][ERROR]`, msg, ...args),
+  }
+
   private constructor() {}
 
   static getInstance(): FileManager {
@@ -46,25 +87,25 @@ export class FileManager {
     ]
 
     this.watcher = watch(watchPaths, {
-      ignored: /(^|[\/\\])\../, // ignore dotfiles
+      ignored: /(^|[/\\])\../, // ignore dotfiles
       persistent: true,
       ignoreInitial: true,
     })
 
     this.watcher.on('change', async (filePath) => {
-      console.log(`File changed: ${filePath}`)
+      this.logger.info(`File changed: ${filePath}`)
       const context = await this.getProjectContext()
       this.notifyFileChanges(context)
     })
 
     this.watcher.on('add', async (filePath) => {
-      console.log(`File added: ${filePath}`)
+      this.logger.info(`File added: ${filePath}`)
       const context = await this.getProjectContext()
       this.notifyFileChanges(context)
     })
 
     this.watcher.on('unlink', async (filePath) => {
-      console.log(`File removed: ${filePath}`)
+      this.logger.info(`File removed: ${filePath}`)
       const context = await this.getProjectContext()
       this.notifyFileChanges(context)
     })
@@ -99,7 +140,7 @@ export class FileManager {
       const content = await fs.readFile(filePath, 'utf-8')
       return JSON.parse(content) as T
     } catch (error) {
-      console.error(`Error reading JSON file ${filePath}:`, error)
+      this.logger.error(`Error reading JSON file ${filePath}:`, error)
       return null
     }
   }
@@ -127,31 +168,31 @@ export class FileManager {
   // Skills
   async getSkills(): Promise<Skill[]> {
     const skills: Skill[] = []
-    console.log('[FileManager] getSkills() called')
+    this.logger.info('getSkills() called')
 
     // Scan plugin skills (SKILL.md files)
     const pluginSkillsPath = path.join(this.userConfigPath, 'plugins', 'marketplaces', 'anthropic-agent-skills')
-    console.log('[FileManager] Scanning plugin skills at:', pluginSkillsPath)
+    this.logger.info('Scanning plugin skills at:', pluginSkillsPath)
     try {
       const pluginDirs = await fs.readdir(pluginSkillsPath)
-      console.log('[FileManager] Found', pluginDirs.length, 'directories')
+      this.logger.info('Found', pluginDirs.length, 'directories')
       for (const dir of pluginDirs) {
         const skillPath = path.join(pluginSkillsPath, dir)
         const stat = await fs.stat(skillPath).catch(() => null)
         if (stat?.isDirectory()) {
           const skillMdPath = path.join(skillPath, 'SKILL.md')
           if (await this.fileExists(skillMdPath)) {
-            console.log('[FileManager] Parsing skill:', dir)
+            this.logger.info('Parsing skill:', dir)
             const skill = await this.parseSkillMD(skillMdPath, 'user')
             if (skill) {
-              console.log('[FileManager] Successfully parsed:', skill.name)
+              this.logger.info('Successfully parsed:', skill.name)
               skills.push(skill)
             }
           }
         }
       }
     } catch (error) {
-      console.error('Error scanning plugin skills:', error)
+      this.logger.error('Error scanning plugin skills:', error)
     }
 
     // Scan user skills (both JSON and SKILL.md)
@@ -173,7 +214,7 @@ export class FileManager {
         }
       }
     } catch (error) {
-      console.error('Error scanning user skills:', error)
+      this.logger.error('Error scanning user skills:', error)
     }
 
     // Also scan for JSON format skills in project
@@ -193,12 +234,21 @@ export class FileManager {
 
   private async parseSkillMD(filePath: string, location: 'user' | 'project'): Promise<Skill | null> {
     try {
+      // Check cache first
+      const stats = await fs.stat(filePath)
+      const cached = this.skillCache.get(filePath)
+
+      if (cached && cached.mtime === stats.mtime.getTime()) {
+        this.logger.info(`Using cached skill: ${path.basename(filePath)}`)
+        return cached.skill
+      }
+
       const content = await fs.readFile(filePath, 'utf-8')
 
       // Parse YAML frontmatter
       const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/)
       if (!frontmatterMatch) {
-        console.error(`No frontmatter found in ${filePath}`)
+        this.logger.error(`No frontmatter found in ${filePath}`)
         return null
       }
 
@@ -360,7 +410,7 @@ export class FileManager {
           technologies: techWords.size > 0 ? Array.from(techWords).map(w => ({ word: w, type: 'technology' })) : undefined,
         }
 
-        console.log(`[FileManager] Extracted triggers for ${name}:`, {
+        this.logger.info(`Extracted triggers for ${name}:`, {
           actions: actionWords.size,
           formats: formatWords.size,
           topics: topicWords.size,
@@ -395,9 +445,15 @@ export class FileManager {
         content, // Add full markdown content for frontend analysis
       }
 
+      // Cache the parsed skill
+      this.skillCache.set(filePath, {
+        skill,
+        mtime: stats.mtime.getTime()
+      })
+
       return skill
     } catch (error) {
-      console.error(`Error parsing SKILL.md at ${filePath}:`, error)
+      this.logger.error(`Error parsing SKILL.md at ${filePath}:`, error)
       return null
     }
   }
@@ -524,16 +580,16 @@ export class FileManager {
 
   // MCP Servers
   async getMCPServers(): Promise<MCPServers> {
-    console.log('[FileManager] getMCPServers() called')
+    this.logger.info('getMCPServers() called')
 
     // Try claude_mcp_config.json first (the actual file Claude uses)
     const userMCPPath = path.join(this.userConfigPath, 'claude_mcp_config.json')
-    console.log('[FileManager] Checking user MCP config at:', userMCPPath)
+    this.logger.info('Checking user MCP config at:', userMCPPath)
     const userMCP = await this.readJSONFile<{ mcpServers: MCPServers }>(userMCPPath)
 
     // Also check for mcpServers.json in project
     const projectMCPPath = path.join(this.projectPath, '.claude', 'mcpServers.json')
-    console.log('[FileManager] Checking project MCP config at:', projectMCPPath)
+    this.logger.info('Checking project MCP config at:', projectMCPPath)
     const projectMCP = await this.readJSONFile<{ mcpServers: MCPServers }>(projectMCPPath)
 
     const servers = {
@@ -541,7 +597,7 @@ export class FileManager {
       ...(projectMCP?.mcpServers || {}),
     }
 
-    console.log('[FileManager] Found', Object.keys(servers).length, 'MCP servers')
+    this.logger.info('Found', Object.keys(servers).length, 'MCP servers')
     return servers
   }
 
@@ -555,13 +611,13 @@ export class FileManager {
 
   // Commands
   async getCommands(): Promise<SlashCommand[]> {
-    console.log('[FileManager] getCommands() called')
+    this.logger.info('getCommands() called')
 
     const commands: SlashCommand[] = []
 
     // Scan project commands
     const projectCommandsPath = path.join(this.projectPath, '.claude', 'commands')
-    console.log('[FileManager] Scanning project commands at:', projectCommandsPath)
+    this.logger.info('Scanning project commands at:', projectCommandsPath)
     try {
       const projectDirs = await fs.readdir(projectCommandsPath)
       for (const dir of projectDirs) {
@@ -573,21 +629,21 @@ export class FileManager {
             const content = await fs.readFile(mdPath, 'utf-8')
             const command = this.parseCommandMarkdown(mdPath, content, 'project')
             if (command) {
-              console.log('[FileManager] Parsed project command:', command.name)
+              this.logger.info('Parsed project command:', command.name)
               commands.push(command)
             }
           } catch (error) {
-            console.error(`[FileManager] Error reading command file ${mdPath}:`, error)
+            this.logger.error(`Error reading command file ${mdPath}:`, error)
           }
         }
       }
     } catch (error) {
-      console.log('[FileManager] No project commands found:', error)
+      this.logger.info('No project commands found:', error)
     }
 
     // Scan user commands
     const userCommandsPath = path.join(this.userConfigPath, 'commands')
-    console.log('[FileManager] Scanning user commands at:', userCommandsPath)
+    this.logger.info('Scanning user commands at:', userCommandsPath)
     try {
       const userDirs = await fs.readdir(userCommandsPath)
       for (const dir of userDirs) {
@@ -599,19 +655,19 @@ export class FileManager {
             const content = await fs.readFile(mdPath, 'utf-8')
             const command = this.parseCommandMarkdown(mdPath, content, 'user')
             if (command) {
-              console.log('[FileManager] Parsed user command:', command.name)
+              this.logger.info('Parsed user command:', command.name)
               commands.push(command)
             }
           } catch (error) {
-            console.error(`[FileManager] Error reading command file ${mdPath}:`, error)
+            this.logger.error(`Error reading command file ${mdPath}:`, error)
           }
         }
       }
     } catch (error) {
-      console.log('[FileManager] No user commands found:', error)
+      this.logger.info('No user commands found:', error)
     }
 
-    console.log('[FileManager] Returning', commands.length, 'commands')
+    this.logger.info('Returning', commands.length, 'commands')
     return commands
   }
 
@@ -659,7 +715,7 @@ export class FileManager {
         location
       }
     } catch (error) {
-      console.error('[FileManager] Error parsing command markdown:', error)
+      this.logger.error('Error parsing command markdown:', error)
       return null
     }
   }
@@ -688,27 +744,27 @@ export class FileManager {
 
   // CLAUDE.md
   async getClaudeMDFiles(): Promise<Array<{ content: string; location: 'user' | 'project' | 'global'; filePath: string; exists: boolean; projectName?: string }>> {
-    console.log('[FileManager] getClaudeMDFiles() called')
+    this.logger.info('getClaudeMDFiles() called')
     const files = []
 
     // Global CLAUDE.md (in user config)
     const globalPath = path.join(this.userConfigPath, 'CLAUDE.md')
-    console.log('[FileManager] Checking global CLAUDE.md at:', globalPath)
+    this.logger.info('Checking global CLAUDE.md at:', globalPath)
     try {
       const content = await fs.readFile(globalPath, 'utf-8')
-      console.log('[FileManager] Global CLAUDE.md exists, length:', content.length)
+      this.logger.info('Global CLAUDE.md exists, length:', content.length)
       files.push({ content, location: 'global' as const, filePath: globalPath, exists: true })
     } catch (error) {
-      console.log('[FileManager] Global CLAUDE.md does not exist')
+      this.logger.info('Global CLAUDE.md does not exist')
       files.push({ content: '', location: 'global' as const, filePath: globalPath, exists: false })
     }
 
     // Auto-discover all project CLAUDE.md files
     const projectClaudeMdFiles = await this.discoverProjectClaudeMDs()
-    console.log('[FileManager] Discovered', projectClaudeMdFiles.length, 'project CLAUDE.md files')
+    this.logger.info('Discovered', projectClaudeMdFiles.length, 'project CLAUDE.md files')
     files.push(...projectClaudeMdFiles)
 
-    console.log('[FileManager] Returning', files.length, 'CLAUDE.md files')
+    this.logger.info('Returning', files.length, 'CLAUDE.md files')
     return files
   }
 
@@ -716,27 +772,50 @@ export class FileManager {
     const discovered = []
     const homeDir = os.homedir()
 
-    // Common development directories to scan
-    const scanRoots = [
-      path.join(homeDir, 'Documents'),
-      path.join(homeDir, 'Projects'),
-      path.join(homeDir, 'Developer'),
-      path.join(homeDir, 'dev'),
-      path.join(homeDir, 'workspace'),
-      path.join(homeDir, 'code'),
-      path.join(homeDir, 'src'),
-    ]
+    this.logger.info('Auto-discovering CLAUDE.md files in development directories...')
 
-    console.log('[FileManager] Auto-discovering CLAUDE.md files in development directories...')
-
-    for (const root of scanRoots) {
+    // Use timeout to prevent hanging
+    const scanPromises = this.ALLOWED_SCAN_ROOTS.map(async (root) => {
       try {
         await fs.access(root)
-        const foundFiles = await this.scanForClaudeMD(root, 3) // Max depth of 3
-        discovered.push(...foundFiles)
-      } catch {
-        // Directory doesn't exist, skip
+
+        // Verify root is within allowed paths (security check)
+        const resolvedRoot = await fs.realpath(root).catch(() => null)
+        if (!resolvedRoot) {
+          this.logger.warn(`Skipping invalid path: ${root}`)
+          return []
+        }
+
+        // Check if path is still within home directory after resolving symlinks
+        if (!resolvedRoot.startsWith(homeDir)) {
+          this.logger.warn(`Security: Skipping path outside home directory: ${resolvedRoot}`)
+          return []
+        }
+
+        const foundFiles = await this.scanForClaudeMD(resolvedRoot, this.MAX_SCAN_DEPTH)
+        return foundFiles
+      } catch (error) {
+        // Directory doesn't exist or no permission, skip
+        return []
       }
+    })
+
+    // Apply timeout to entire scan operation
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Scan timeout')), this.SCAN_TIMEOUT_MS)
+    )
+
+    try {
+      const results = await Promise.race([
+        Promise.all(scanPromises),
+        timeoutPromise
+      ])
+
+      for (const files of results) {
+        discovered.push(...files)
+      }
+    } catch (error) {
+      this.logger.error('Scan timeout or error:', error)
     }
 
     // Remove duplicates based on filePath
@@ -747,17 +826,39 @@ export class FileManager {
       }
     }
 
+    this.logger.info(`Discovered ${uniqueFiles.size} unique CLAUDE.md files`)
     return Array.from(uniqueFiles.values())
   }
 
-  private async scanForClaudeMD(dir: string, maxDepth: number, currentDepth = 0): Promise<Array<{ content: string; location: 'project'; filePath: string; exists: boolean; projectName: string }>> {
+  private async scanForClaudeMD(
+    dir: string,
+    maxDepth: number,
+    currentDepth = 0,
+    scannedCount = { count: 0 }
+  ): Promise<Array<{ content: string; location: 'project'; filePath: string; exists: boolean; projectName: string }>> {
     const results = []
 
+    // Stop if max depth exceeded
     if (currentDepth > maxDepth) {
       return results
     }
 
+    // Stop if scanned too many directories (performance protection)
+    if (scannedCount.count >= this.MAX_FILES_TO_SCAN) {
+      this.logger.warn(`Reached max scan limit of ${this.MAX_FILES_TO_SCAN} files`)
+      return results
+    }
+
     try {
+      scannedCount.count++
+
+      // Security: Detect and skip symbolic links to prevent path traversal
+      const dirStat = await fs.lstat(dir)
+      if (dirStat.isSymbolicLink()) {
+        this.logger.warn(`Skipping symbolic link for security: ${dir}`)
+        return results
+      }
+
       const entries = await fs.readdir(dir, { withFileTypes: true })
 
       // Check if CLAUDE.md exists in current directory
@@ -765,7 +866,7 @@ export class FileManager {
       try {
         const content = await fs.readFile(claudeMdPath, 'utf-8')
         const projectName = path.basename(dir)
-        console.log('[FileManager] Found CLAUDE.md in:', dir)
+        this.logger.info(`Found CLAUDE.md in: ${dir}`)
         results.push({
           content,
           location: 'project' as const,
@@ -782,29 +883,36 @@ export class FileManager {
         if (entry.isDirectory()) {
           const entryName = entry.name
 
-          // Skip common directories that shouldn't be scanned
-          if (
-            entryName.startsWith('.') ||
-            entryName === 'node_modules' ||
-            entryName === 'vendor' ||
-            entryName === 'dist' ||
-            entryName === 'build' ||
-            entryName === 'out' ||
-            entryName === 'target' ||
-            entryName === '__pycache__' ||
-            entryName === 'venv' ||
-            entryName === 'env'
-          ) {
+          // Skip directories that start with . or are in skip list
+          if (entryName.startsWith('.') || this.SKIP_DIRECTORIES.has(entryName)) {
             continue
           }
 
+          // Check for max files limit before recursing
+          if (scannedCount.count >= this.MAX_FILES_TO_SCAN) {
+            break
+          }
+
           const subDir = path.join(dir, entryName)
-          const subResults = await this.scanForClaudeMD(subDir, maxDepth, currentDepth + 1)
+
+          // Security: Check if subdirectory is a symbolic link
+          try {
+            const subDirStat = await fs.lstat(subDir)
+            if (subDirStat.isSymbolicLink()) {
+              this.logger.warn(`Skipping symbolic link: ${subDir}`)
+              continue
+            }
+          } catch {
+            continue // Skip if can't stat
+          }
+
+          const subResults = await this.scanForClaudeMD(subDir, maxDepth, currentDepth + 1, scannedCount)
           results.push(...subResults)
         }
       }
     } catch (error) {
       // Permission denied or other error, skip this directory
+      this.logger.warn(`Error scanning directory ${dir}:`, error instanceof Error ? error.message : 'Unknown error')
     }
 
     return results

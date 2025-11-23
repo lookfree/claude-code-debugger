@@ -71,22 +71,36 @@ export default function Skills() {
 
   // Render diagram when selected skill or layout changes
   useEffect(() => {
+    let cancelled = false
+
     if (selectedSkill && diagramRef.current) {
       const renderDiagram = async () => {
+        if (cancelled) return
+
         try {
           const diagramCode = generateSkillDiagram(selectedSkill, diagramLayout)
           const { svg } = await mermaid.render('mermaid-diagram', diagramCode)
-          if (diagramRef.current) {
+
+          if (!cancelled && diagramRef.current) {
             diagramRef.current.innerHTML = svg
           }
         } catch (error) {
           console.error('Error rendering diagram:', error)
-          if (diagramRef.current) {
+          if (!cancelled && diagramRef.current) {
             diagramRef.current.innerHTML = '<div class="text-red-500">Error rendering diagram</div>'
           }
         }
       }
+
       renderDiagram()
+    }
+
+    // Cleanup function to prevent memory leaks
+    return () => {
+      cancelled = true
+      if (diagramRef.current) {
+        diagramRef.current.innerHTML = ''
+      }
     }
   }, [selectedSkill, diagramLayout])
 
