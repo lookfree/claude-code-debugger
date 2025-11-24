@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Search, Plus, FileCode, Users, Wrench, BarChart3, FileText, Zap, BookOpen, Code } from 'lucide-react'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Search, Plus, FileCode, Users, Wrench, BarChart3, FileText, Zap, BookOpen, Code, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { analyzeTriggers, generateExampleQueries } from '@/utils/triggerAnalyzer'
 import { generateSkillDiagram, type DiagramLayout } from '@/utils/diagramGenerator'
@@ -27,6 +28,9 @@ export default function Skills() {
   const [diagramPan, setDiagramPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
+  const [dragActive, setDragActive] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const diagramRef = useRef<HTMLDivElement>(null)
   const diagramContainerRef = useRef<HTMLDivElement>(null)
 
@@ -168,6 +172,51 @@ export default function Skills() {
     setDiagramPan({ x: 0, y: 0 })
   }
 
+  // File upload handlers
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true)
+    } else if (e.type === "dragleave") {
+      setDragActive(false)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(false)
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFile(e.dataTransfer.files[0])
+    }
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault()
+    if (e.target.files && e.target.files[0]) {
+      handleFile(e.target.files[0])
+    }
+  }
+
+  const handleFile = async (file: File) => {
+    // Check if it's a ZIP file
+    if (!file.name.endsWith('.zip')) {
+      alert('Please upload a ZIP file containing a SKILL.md file')
+      return
+    }
+
+    // TODO: Implement actual upload logic
+    console.log('Uploading file:', file.name)
+    alert(`File selected: ${file.name}\nUpload functionality will be implemented soon!`)
+    setUploadDialogOpen(false)
+  }
+
+  const onButtonClick = () => {
+    fileInputRef.current?.click()
+  }
+
   return (
     <div className="flex h-full gap-4">
       {/* Left Panel - Skills List */}
@@ -222,11 +271,79 @@ export default function Skills() {
           )}
         </div>
 
-        {/* Add Button */}
-        <Button className="w-full">
-          <Plus className="w-4 h-4 mr-2" />
-          New Skill
-        </Button>
+        {/* Upload Skill Button */}
+        <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="w-full">
+              <Upload className="w-4 h-4 mr-2" />
+              Upload skill
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Upload skill</DialogTitle>
+              <DialogDescription>
+                {/* Empty description to match the design */}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              {/* Drag and Drop Area */}
+              <div
+                className={cn(
+                  "relative border-2 border-dashed rounded-lg p-12 text-center transition-colors cursor-pointer",
+                  dragActive ? "border-primary bg-primary/5" : "border-gray-300 hover:border-gray-400"
+                )}
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+                onClick={onButtonClick}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".zip"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-12 h-12 rounded-lg border-2 border-gray-300 flex items-center justify-center">
+                    <Plus className="w-6 h-6 text-gray-400" />
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    Drag and drop or click to upload
+                  </p>
+                </div>
+              </div>
+
+              {/* File Requirements */}
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-900">File requirements</p>
+                <ul className="space-y-1 text-sm text-gray-600">
+                  <li className="flex items-start gap-2">
+                    <span className="inline-block w-1 h-1 rounded-full bg-gray-400 mt-2" />
+                    ZIP file that includes exactly one SKILL.md file at the root level
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="inline-block w-1 h-1 rounded-full bg-gray-400 mt-2" />
+                    SKILL.md contains a skill name and description formatted in YAML
+                  </li>
+                </ul>
+              </div>
+
+              {/* Links */}
+              <div className="flex items-center gap-4 text-sm">
+                <a href="#" className="text-gray-600 underline hover:text-gray-900">
+                  Read more about creating skills
+                </a>
+                <span className="text-gray-400">or</span>
+                <a href="#" className="text-gray-600 underline hover:text-gray-900">
+                  see an example
+                </a>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Right Panel - Skill Details */}

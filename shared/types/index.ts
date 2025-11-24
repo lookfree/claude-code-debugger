@@ -4,6 +4,7 @@ export * from './hook'
 export * from './mcp'
 export * from './command'
 export * from './claudemd'
+export * from './provider'
 
 export interface ConfigFile {
   path: string

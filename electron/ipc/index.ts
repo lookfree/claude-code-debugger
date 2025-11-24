@@ -9,6 +9,7 @@ import { registerClaudeMDHandlers } from './claudemd'
 import { registerProjectHandlers } from './project'
 import { registerDependencyHandlers } from './dependencies'
 import { registerValidationHandlers } from './validation'
+import { registerProviderHandlers } from './providers'
 
 export function registerIPCHandlers(ipcMain: IpcMain, fileManager: FileManager) {
   registerSkillHandlers(ipcMain, fileManager)
@@ -20,4 +21,5 @@ export function registerIPCHandlers(ipcMain: IpcMain, fileManager: FileManager) 
   registerProjectHandlers(ipcMain, fileManager)
   registerDependencyHandlers(ipcMain, fileManager)
   registerValidationHandlers(ipcMain)
+  registerProviderHandlers()
 }

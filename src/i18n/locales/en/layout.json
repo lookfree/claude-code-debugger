@@ -10,6 +10,7 @@
     "mcp": "MCP Servers",
     "skills": "Skills",
     "hooks": "Hooks",
+    "models": "AI Models",
     "graph": "Dependency Graph",
     "settings": "Settings"
   }

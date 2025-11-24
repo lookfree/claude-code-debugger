@@ -52,7 +52,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDependencyGraph: () => ipcRenderer.invoke('dependencies:getGraph'),
 
   // Validation
-  validateConfig: (type, config) => ipcRenderer.invoke('validate:config', type, config)
+  validateConfig: (type, config) => ipcRenderer.invoke('validate:config', type, config),
+
+  // Providers
+  getProviders: () => ipcRenderer.invoke('providers:getAll'),
+  getActiveProvider: () => ipcRenderer.invoke('providers:getActive'),
+  addProvider: (provider) => ipcRenderer.invoke('providers:add', provider),
+  updateProvider: (id, updates) => ipcRenderer.invoke('providers:update', id, updates),
+  deleteProvider: (id) => ipcRenderer.invoke('providers:delete', id),
+  switchProvider: (id) => ipcRenderer.invoke('providers:switch', id),
+  readClaudeSettings: () => ipcRenderer.invoke('providers:readClaudeSettings')
 })
 
 console.log('[Preload] electronAPI exposed to window')

@@ -10,6 +10,7 @@
     "mcp": "MCP 服务器",
     "skills": "技能",
     "hooks": "钩子",
+    "models": "AI 模型",
     "graph": "依赖关系图",
     "settings": "设置"
   }

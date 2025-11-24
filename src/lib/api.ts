@@ -6,6 +6,7 @@ import type {
   MCPServerConfig,
   SlashCommand,
   ProjectContext,
+  Provider,
 } from '@shared/types'
 
 // Type-safe wrapper around electron API
@@ -114,5 +115,37 @@ export const api = {
   // File watching
   onFilesChanged: (callback: (files: unknown) => void): void => {
     window.electronAPI.onFilesChanged(callback)
+  },
+
+  // Providers
+  providers: {
+    getAll: async (): Promise<Provider[]> => {
+      if (!window.electronAPI) throw new Error('Electron API not available')
+      return await window.electronAPI.getProviders()
+    },
+    getActive: async (): Promise<Provider | null> => {
+      if (!window.electronAPI) throw new Error('Electron API not available')
+      return await window.electronAPI.getActiveProvider()
+    },
+    add: async (provider: Omit<Provider, 'id' | 'createdAt' | 'updatedAt'>): Promise<Provider> => {
+      if (!window.electronAPI) throw new Error('Electron API not available')
+      return await window.electronAPI.addProvider(provider)
+    },
+    update: async (id: string, updates: Partial<Provider>): Promise<Provider> => {
+      if (!window.electronAPI) throw new Error('Electron API not available')
+      return await window.electronAPI.updateProvider(id, updates)
+    },
+    delete: async (id: string): Promise<void> => {
+      if (!window.electronAPI) throw new Error('Electron API not available')
+      return await window.electronAPI.deleteProvider(id)
+    },
+    switch: async (id: string): Promise<Provider> => {
+      if (!window.electronAPI) throw new Error('Electron API not available')
+      return await window.electronAPI.switchProvider(id)
+    },
+    readClaudeSettings: async (): Promise<string | null> => {
+      if (!window.electronAPI) throw new Error('Electron API not available')
+      return await window.electronAPI.readClaudeSettings()
+    },
   },
 }

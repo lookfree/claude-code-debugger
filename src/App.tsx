@@ -8,6 +8,7 @@ import MCP from './pages/MCP'
 import Commands from './pages/Commands'
 import ClaudeMd from './pages/ClaudeMd'
 import Graph from './pages/Graph'
+import Models from './pages/Models'
 import Settings from './pages/Settings'
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
           <Route path="/mcp" element={<MCP />} />
           <Route path="/skills" element={<Skills />} />
           <Route path="/hooks" element={<Hooks />} />
+          <Route path="/models" element={<Models />} />
           <Route path="/graph" element={<Graph />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
