@@ -263,7 +263,7 @@ export default function Models() {
 
         {/* Add Provider Templates */}
         <div>
-          <h2 className="text-xl font-semibold mb-4">添加新的模型配置</h2>
+          <h2 className="text-xl font-semibold mb-4">{t('addNew')}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {defaultProviders.map((template) => {
               const isAdded = providers.some(p => p.name === template.name)
@@ -289,7 +289,7 @@ export default function Models() {
                           </CardDescription>
                         )}
                         {isAdded && (
-                          <Badge variant="secondary" className="mt-2">已添加</Badge>
+                          <Badge variant="secondary" className="mt-2">{t('added')}</Badge>
                         )}
                       </div>
                       {!isAdded && <Plus className="w-5 h-5 text-muted-foreground flex-shrink-0" />}
@@ -303,13 +303,13 @@ export default function Models() {
 
         {/* Configured Providers */}
         <div>
-          <h2 className="text-xl font-semibold mb-4">已配置的模型</h2>
+          <h2 className="text-xl font-semibold mb-4">{t('configured')}</h2>
           <div className="space-y-3">
             {providers.length === 0 ? (
               <Card>
                 <CardContent className="py-12">
                   <div className="text-center text-muted-foreground">
-                    还没有配置任何模型，从上面选择一个开始吧
+                    {t('noProviders')}
                   </div>
                 </CardContent>
               </Card>
@@ -334,7 +334,7 @@ export default function Models() {
                             {provider.isActive && (
                               <Badge variant="default" className="text-xs">
                                 <Check className="w-3 h-3 mr-1" />
-                                Active
+                                {t('active')}
                               </Badge>
                             )}
                             {!provider.enabled && (
@@ -370,7 +370,7 @@ export default function Models() {
                             size="sm"
                             onClick={() => handleSwitchProvider(provider.id)}
                           >
-                            切换使用
+                            {t('actions.switch')}
                           </Button>
                         )}
                         <Button
@@ -378,14 +378,14 @@ export default function Models() {
                           size="sm"
                           onClick={() => handleEditProvider(provider)}
                         >
-                          编辑
+                          {t('actions.edit')}
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handleToggleProvider(provider.id)}
                         >
-                          {provider.enabled ? '禁用' : '启用'}
+                          {provider.enabled ? t('actions.disable') : t('actions.enable')}
                         </Button>
                         <Button
                           variant="destructive"
@@ -393,7 +393,7 @@ export default function Models() {
                           onClick={() => handleDeleteProvider(provider.id)}
                           disabled={provider.isActive}
                         >
-                          删除
+                          {t('actions.delete')}
                         </Button>
                       </div>
                     </div>
@@ -410,19 +410,19 @@ export default function Models() {
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>
-              {editingProvider ? '编辑模型配置' : '添加新模型'}
+              {editingProvider ? t('dialog.editTitle') : t('dialog.addTitle')}
             </DialogTitle>
             <DialogDescription>
-              配置 AI 模型的 API 密钥和相关参数
+              {t('dialog.description')}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">显示名称</label>
+              <label className="text-sm font-medium">{t('dialog.displayName')}</label>
               <Input
                 value={formData.displayName}
                 onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
-                placeholder="例如: Claude (Anthropic)"
+                placeholder={t('dialog.displayNamePlaceholder')}
               />
             </div>
 
@@ -440,43 +440,43 @@ export default function Models() {
             {formData.mode === 'api' && (
               <>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">API Key</label>
+                  <label className="text-sm font-medium">{t('dialog.apiKey')}</label>
                   <Input
                     type="password"
                     value={formData.apiKey}
                     onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-                    placeholder="输入你的 API 密钥"
+                    placeholder={t('dialog.apiKeyPlaceholder')}
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Base URL</label>
+                  <label className="text-sm font-medium">{t('dialog.baseUrl')}</label>
                   <Input
                     value={formData.baseUrl}
                     onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
-                    placeholder="https://api.example.com/v1"
+                    placeholder={t('dialog.baseUrlPlaceholder')}
                   />
                   <p className="text-xs text-muted-foreground">
-                    API 端点地址（设置 ANTHROPIC_BASE_URL）
+                    {t('dialog.baseUrlDesc')}
                   </p>
                 </div>
               </>
             )}
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Model</label>
+              <label className="text-sm font-medium">{t('dialog.model')}</label>
               <Input
                 value={formData.model}
                 onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                placeholder="模型名称"
+                placeholder={t('dialog.modelPlaceholder')}
               />
             </div>
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              取消
+              {t('dialog.cancel')}
             </Button>
             <Button onClick={handleSaveProvider}>
-              保存
+              {t('dialog.save')}
             </Button>
           </div>
         </DialogContent>
