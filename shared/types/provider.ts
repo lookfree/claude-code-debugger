@@ -14,6 +14,7 @@ export interface Provider {
   enabled: boolean // Whether the provider is enabled
   isActive: boolean // Whether this is the currently active provider
   icon?: string // Icon emoji or URL
+  description?: string // Short description of the provider
   createdAt?: string
   updatedAt?: string
 }

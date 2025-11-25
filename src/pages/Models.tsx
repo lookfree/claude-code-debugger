@@ -18,6 +18,7 @@ interface Provider {
   enabled: boolean
   isActive: boolean
   icon?: string
+  description?: string
   createdAt?: string
   updatedAt?: string
 }
@@ -25,18 +26,20 @@ interface Provider {
 const defaultProviders: Omit<Provider, 'id' | 'apiKey' | 'enabled' | 'isActive'>[] = [
   {
     name: 'claude-subscription',
-    displayName: 'Claude (订阅模式)',
+    displayName: 'Claude Pro/Max',
     mode: 'subscription',
-    model: 'claude-3-5-sonnet-20241022',
-    icon: '👤'
+    model: 'claude-sonnet-4-5-20250929',
+    icon: '👤',
+    description: '使用 Claude 订阅账号（需通过 claude login 登录）'
   },
   {
     name: 'claude-api',
     displayName: 'Claude API',
     mode: 'api',
     baseUrl: 'https://api.anthropic.com/v1',
-    model: 'claude-3-5-sonnet-20241022',
-    icon: '🎯'
+    model: 'claude-sonnet-4-5-20250929',
+    icon: '🔑',
+    description: '使用 Anthropic API Key（按量付费）'
   },
   {
     name: 'kimi',
@@ -44,7 +47,8 @@ const defaultProviders: Omit<Provider, 'id' | 'apiKey' | 'enabled' | 'isActive'>
     mode: 'api',
     baseUrl: 'https://api.moonshot.cn/v1',
     model: 'moonshot-v1-8k',
-    icon: '🌙'
+    icon: '🌙',
+    description: '支持超长上下文，擅长中文理解'
   },
   {
     name: 'zhipu',
@@ -52,7 +56,8 @@ const defaultProviders: Omit<Provider, 'id' | 'apiKey' | 'enabled' | 'isActive'>
     mode: 'api',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     model: 'glm-4',
-    icon: '💡'
+    icon: '💡',
+    description: '国产大模型，支持多模态能力'
   },
   {
     name: 'deepseek',
@@ -60,7 +65,8 @@ const defaultProviders: Omit<Provider, 'id' | 'apiKey' | 'enabled' | 'isActive'>
     mode: 'api',
     baseUrl: 'https://api.deepseek.com/v1',
     model: 'deepseek-chat',
-    icon: '🔍'
+    icon: '🔍',
+    description: '专注代码生成，性价比高'
   },
   {
     name: 'openai',
@@ -68,7 +74,8 @@ const defaultProviders: Omit<Provider, 'id' | 'apiKey' | 'enabled' | 'isActive'>
     mode: 'api',
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4-turbo-preview',
-    icon: '⚡'
+    icon: '⚡',
+    description: '通用 AI 模型，功能全面'
   }
 ]
 
@@ -104,7 +111,8 @@ export default function Models() {
     setFormData({
       displayName: template.displayName,
       name: template.name,
-      mode: template.mode,
+      // Only Claude supports subscription mode, force API mode for others
+      mode: template.name.includes('claude') ? template.mode : 'api',
       apiKey: '',
       baseUrl: template.baseUrl || '',
       model: template.model || ''
@@ -117,7 +125,8 @@ export default function Models() {
     setFormData({
       displayName: provider.displayName,
       name: provider.name,
-      mode: provider.mode,
+      // Only Claude supports subscription mode, force API mode for others
+      mode: provider.name.includes('claude') ? provider.mode : 'api',
       apiKey: provider.apiKey || '',
       baseUrl: provider.baseUrl || '',
       model: provider.model || ''
@@ -266,17 +275,22 @@ export default function Models() {
                   onClick={() => !isAdded && handleAddProvider(template)}
                 >
                   <CardHeader>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center text-xl">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center text-xl flex-shrink-0">
                         {template.icon}
                       </div>
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <CardTitle className="text-base">{template.displayName}</CardTitle>
+                        {template.description && (
+                          <CardDescription className="mt-1 text-xs">
+                            {template.description}
+                          </CardDescription>
+                        )}
                         {isAdded && (
-                          <Badge variant="secondary" className="mt-1">已添加</Badge>
+                          <Badge variant="secondary" className="mt-2">已添加</Badge>
                         )}
                       </div>
-                      {!isAdded && <Plus className="w-5 h-5 text-muted-foreground" />}
+                      {!isAdded && <Plus className="w-5 h-5 text-muted-foreground flex-shrink-0" />}
                     </div>
                   </CardHeader>
                 </Card>
@@ -410,38 +424,16 @@ export default function Models() {
               />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">认证模式</label>
-              <div className="flex gap-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="mode"
-                    value="api"
-                    checked={formData.mode === 'api'}
-                    onChange={(e) => setFormData({ ...formData, mode: e.target.value as 'api' })}
-                    className="w-4 h-4"
-                  />
-                  <span>API 模式</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="mode"
-                    value="subscription"
-                    checked={formData.mode === 'subscription'}
-                    onChange={(e) => setFormData({ ...formData, mode: e.target.value as 'subscription' })}
-                    className="w-4 h-4"
-                  />
-                  <span>订阅模式</span>
-                </label>
+            {/* Show info for subscription mode providers */}
+            {formData.name === 'claude-subscription' && (
+              <div className="space-y-2">
+                <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-sm text-blue-900 dark:text-blue-100">
+                    💡 使用 Claude Pro/Max 订阅账号，需要先在终端运行 <code className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900 rounded">claude login</code> 登录
+                  </p>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                {formData.mode === 'subscription'
-                  ? '使用 Claude 订阅登录（通过 claude login）'
-                  : '使用 API Key 进行认证'}
-              </p>
-            </div>
+            )}
 
             {formData.mode === 'api' && (
               <>
