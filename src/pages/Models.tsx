@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -80,6 +81,7 @@ const defaultProviders: Omit<Provider, 'id' | 'apiKey' | 'enabled' | 'isActive'>
 ]
 
 export default function Models() {
+  const { t } = useTranslation('models')
   const [providers, setProviders] = useState<Provider[]>([])
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -204,9 +206,9 @@ export default function Models() {
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold mb-2">AI Models Configuration</h1>
+          <h1 className="text-3xl font-bold mb-2">{t('title')}</h1>
           <p className="text-muted-foreground">
-            管理和切换不同的 AI 模型提供商，支持 Claude、Kimi、智谱等多种模型
+            {t('description')}
           </p>
         </div>
 

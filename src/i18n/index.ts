@@ -7,21 +7,25 @@ import { defaultNS, fallbackLng, supportedLngs } from './config'
 import commonEn from './locales/en/common.json'
 import layoutEn from './locales/en/layout.json'
 import dashboardEn from './locales/en/dashboard.json'
+import modelsEn from './locales/en/models.json'
 
 import commonZh from './locales/zh/common.json'
 import layoutZh from './locales/zh/layout.json'
 import dashboardZh from './locales/zh/dashboard.json'
+import modelsZh from './locales/zh/models.json'
 
 export const resources = {
   en: {
     common: commonEn,
     layout: layoutEn,
     dashboard: dashboardEn,
+    models: modelsEn,
   },
   zh: {
     common: commonZh,
     layout: layoutZh,
     dashboard: dashboardZh,
+    models: modelsZh,
   },
 } as const
 
