@@ -29,6 +29,7 @@ export interface SkillScript {
   name: string
   command: string
   description?: string
+  content?: string // Script file content
 }
 
 export interface Skill {

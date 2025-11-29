@@ -19,7 +19,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getHooks: () => ipcRenderer.invoke('hooks:getAll'),
   getHook: (name) => ipcRenderer.invoke('hooks:get', name),
   saveHook: (hook) => ipcRenderer.invoke('hooks:save', hook),
+  saveHookRaw: (name, content, filePath) => ipcRenderer.invoke('hooks:saveRaw', name, content, filePath),
+  saveHookToSettings: (hookType, hookConfig, location, projectPath, matcherIndex) =>
+    ipcRenderer.invoke('hooks:saveToSettings', hookType, hookConfig, location, projectPath, matcherIndex),
   deleteHook: (name) => ipcRenderer.invoke('hooks:delete', name),
+  deleteHookFromSettings: (hookType, matcherIndex, location, projectPath) =>
+    ipcRenderer.invoke('hooks:deleteFromSettings', hookType, matcherIndex, location, projectPath),
+  createHookScript: (scriptPath, content, location, projectPath) =>
+    ipcRenderer.invoke('hooks:createScript', scriptPath, content, location, projectPath),
+  readHookScript: (scriptPath, location, projectPath) =>
+    ipcRenderer.invoke('hooks:readScript', scriptPath, location, projectPath),
+  getHookLogs: () => ipcRenderer.invoke('hooks:getLogs'),
+  getHookDebugLogs: () => ipcRenderer.invoke('hooks:getDebugLogs'),
+  clearHookLogs: () => ipcRenderer.invoke('hooks:clearLogs'),
+  testHook: (hookName, command, hookType, location, projectPath, timeout) =>
+    ipcRenderer.invoke('hooks:test', hookName, command, hookType, location, projectPath, timeout),
+  launchDebugSession: (hookType, projectPath) =>
+    ipcRenderer.invoke('hooks:launchDebugSession', hookType, projectPath),
+  stopDebugSession: (pid) => ipcRenderer.invoke('hooks:stopDebugSession', pid),
 
   // MCP
   getMCPServers: () => ipcRenderer.invoke('mcp:getAll'),
@@ -32,6 +49,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCommands: () => ipcRenderer.invoke('commands:getAll'),
   getCommand: (name) => ipcRenderer.invoke('commands:get', name),
   saveCommand: (command) => ipcRenderer.invoke('commands:save', command),
+  saveCommandRaw: (name, content, filePath) => ipcRenderer.invoke('commands:saveRaw', name, content, filePath),
   deleteCommand: (name) => ipcRenderer.invoke('commands:delete', name),
 
   // CLAUDE.md

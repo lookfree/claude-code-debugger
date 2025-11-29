@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import type { SlashCommand } from '@shared/types'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -6,17 +7,51 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Search, Terminal, Globe, FolderOpen, FileText } from 'lucide-react'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Search, Terminal, Globe, FolderOpen, FileText, Plus, Pencil, Trash2, Save, X, AlertCircle, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeRaw from 'rehype-raw'
 
 export default function Commands() {
+  const { t } = useTranslation('commands')
   const [commands, setCommands] = useState<SlashCommand[]>([])
   const [selectedCommand, setSelectedCommand] = useState<SlashCommand | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [isEditing, setIsEditing] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
+  const [editForm, setEditForm] = useState<{
+    name: string
+    description: string
+    instructions: string
+    location: 'user' | 'project'
+    projectPath: string
+  }>({
+    name: '',
+    description: '',
+    instructions: '',
+    location: 'project',
+    projectPath: ''
+  })
+  const [saving, setSaving] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [validationErrors, setValidationErrors] = useState<string[]>([])
+  const [saveSuccess, setSaveSuccess] = useState(false)
 
   useEffect(() => {
     loadCommands()
@@ -44,6 +79,143 @@ export default function Commands() {
     cmd.description.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  const handleEdit = (command: SlashCommand) => {
+    // 从 filePath 中提取项目路径
+    let projectPath = ''
+    if (command.filePath && command.location === 'project') {
+      // filePath 格式: /path/to/project/.claude/commands/cmd-name/cmd-name.md
+      const match = command.filePath.match(/^(.+)\/\.claude\/commands\//)
+      if (match) {
+        projectPath = match[1]
+      }
+    }
+    setEditForm({
+      name: command.name,
+      description: command.description,
+      instructions: command.rawContent || command.instructions || '',
+      location: command.location || 'project',
+      projectPath
+    })
+    setIsEditing(true)
+    setIsCreating(false)
+  }
+
+  const handleCreate = () => {
+    // 提供模板
+    const template = `---
+description: 命令描述
+argument-hint: [参数1] [参数2?]
+---
+
+# 命令标题
+
+在这里编写命令的指令内容...
+`
+    setEditForm({
+      name: '',
+      description: '',
+      instructions: template,
+      location: 'project',
+      projectPath: ''
+    })
+    setIsCreating(true)
+    setIsEditing(false)
+  }
+
+  const handleSelectProjectPath = async () => {
+    try {
+      const path = await api.project.selectPath()
+      if (path) {
+        setEditForm({ ...editForm, projectPath: path })
+      }
+    } catch (error) {
+      console.error('[Commands Page] Failed to select project path:', error)
+    }
+  }
+
+  const handleSave = async () => {
+    // 简化验证：只验证必填项
+    const errors: string[] = []
+    const name = editForm.name.trim()
+    const content = editForm.instructions.trim()
+
+    if (!name) {
+      errors.push(t('errors.nameRequired'))
+    } else if (!/^[a-z][a-z0-9-]*$/.test(name)) {
+      errors.push(t('errors.invalidName'))
+    }
+
+    if (!content) {
+      errors.push(t('errors.instructionsRequired'))
+    }
+
+    if (isCreating && editForm.location === 'project' && !editForm.projectPath) {
+      errors.push(t('errors.projectPathRequired'))
+    }
+
+    setValidationErrors(errors)
+    if (errors.length > 0) {
+      return
+    }
+
+    setSaving(true)
+    try {
+      // 确定保存路径
+      let targetFilePath: string
+      if (isEditing && selectedCommand?.filePath) {
+        // 编辑模式：使用原来的文件路径
+        targetFilePath = selectedCommand.filePath
+      } else {
+        // 创建模式：构建新的文件路径
+        const baseDir = editForm.location === 'user'
+          ? `${process.env.HOME || '~'}/.claude/commands`
+          : `${editForm.projectPath}/.claude/commands`
+        targetFilePath = `${baseDir}/${name}/${name}.md`
+      }
+
+      console.log('[Commands Page] Saving raw content to:', targetFilePath)
+      await api.commands.saveRaw(name, content, targetFilePath)
+
+      // 重新加载命令列表
+      const updatedCommands = await api.commands.getAll()
+      setCommands(updatedCommands)
+
+      // 从更新后的列表中查找并选中保存的命令
+      const savedCmd = updatedCommands.find(c => c.name === name)
+      if (savedCmd) setSelectedCommand(savedCmd)
+
+      setIsEditing(false)
+      setIsCreating(false)
+      setValidationErrors([])
+    } catch (error) {
+      console.error('[Commands Page] Failed to save command:', error)
+      alert(t('errors.saveFailed') + ': ' + (error as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!selectedCommand) return
+
+    try {
+      console.log('[Commands Page] Deleting command:', selectedCommand.name)
+      await api.commands.delete(selectedCommand.name)
+      setDeleteDialogOpen(false)
+      setSelectedCommand(null)
+      await loadCommands()
+    } catch (error) {
+      console.error('[Commands Page] Failed to delete command:', error)
+      alert(t('errors.deleteFailed') + ': ' + (error as Error).message)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setIsEditing(false)
+    setIsCreating(false)
+    setValidationErrors([])
+  }
+
   const userCommands = filteredCommands.filter((cmd) => cmd.location === 'user')
   const projectCommands = filteredCommands.filter((cmd) => cmd.location === 'project')
 
@@ -51,8 +223,8 @@ export default function Commands() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <div className="text-lg font-semibold mb-2">Loading commands...</div>
-          <div className="text-muted-foreground">Please wait</div>
+          <div className="text-lg font-semibold mb-2">{t('common:loading', 'Loading...')}</div>
+          <div className="text-muted-foreground">{t('common:pleaseWait', 'Please wait')}</div>
         </div>
       </div>
     )
@@ -63,20 +235,26 @@ export default function Commands() {
       {/* Left Sidebar - Commands List */}
       <div className="w-80 flex flex-col gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Slash Commands</h1>
-          <p className="text-muted-foreground mt-2">Manage your custom slash commands</p>
+          <h1 className="text-3xl font-bold">{t('title')}</h1>
+          <p className="text-muted-foreground mt-2">{t('description')}</p>
         </div>
 
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search commands..."
+            placeholder={t('search')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
           />
         </div>
+
+        {/* Create Button */}
+        <Button onClick={handleCreate} className="w-full">
+          <Plus className="h-4 w-4 mr-2" />
+          {t('newCommand')}
+        </Button>
 
         {/* Stats */}
         <div className="grid grid-cols-2 gap-2">
@@ -84,7 +262,7 @@ export default function Commands() {
             <CardHeader className="p-4">
               <CardTitle className="text-sm flex items-center gap-2">
                 <Globe className="h-4 w-4" />
-                User
+                {t('user')}
               </CardTitle>
               <div className="text-2xl font-bold">{userCommands.length}</div>
             </CardHeader>
@@ -93,7 +271,7 @@ export default function Commands() {
             <CardHeader className="p-4">
               <CardTitle className="text-sm flex items-center gap-2">
                 <FolderOpen className="h-4 w-4" />
-                Project
+                {t('project')}
               </CardTitle>
               <div className="text-2xl font-bold">{projectCommands.length}</div>
             </CardHeader>
@@ -105,7 +283,7 @@ export default function Commands() {
           {filteredCommands.length === 0 ? (
             <Card>
               <CardContent className="p-6 text-center text-muted-foreground">
-                {searchQuery ? 'No commands found matching your search.' : 'No commands available.'}
+                {searchQuery ? t('noSearchResults') : t('noCommands')}
               </CardContent>
             </Card>
           ) : (
@@ -133,12 +311,12 @@ export default function Commands() {
                   <div className="flex gap-2 mt-2">
                     <Badge variant={cmd.location === 'user' ? 'default' : 'secondary'}>
                       {cmd.location === 'user' ? (
-                        <><Globe className="h-3 w-3 mr-1" /> User</>
+                        <><Globe className="h-3 w-3 mr-1" /> {t('user')}</>
                       ) : (
-                        <><FolderOpen className="h-3 w-3 mr-1" /> Project</>
+                        <><FolderOpen className="h-3 w-3 mr-1" /> {t('project')}</>
                       )}
                     </Badge>
-                    {cmd.enabled && <Badge variant="outline">Enabled</Badge>}
+                    {cmd.enabled && <Badge variant="outline">{t('enabled')}</Badge>}
                   </div>
                 </CardHeader>
               </Card>
@@ -160,40 +338,49 @@ export default function Commands() {
                   </CardTitle>
                   <CardDescription className="mt-2">{selectedCommand.description}</CardDescription>
                 </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => handleEdit(selectedCommand)}>
+                    <Pencil className="h-4 w-4 mr-1" />
+                    {t('edit')}
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={() => setDeleteDialogOpen(true)}>
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    {t('delete')}
+                  </Button>
+                </div>
               </div>
               <div className="flex gap-2 mt-4">
                 <Badge variant={selectedCommand.location === 'user' ? 'default' : 'secondary'}>
-                  {selectedCommand.location === 'user' ? 'User' : 'Project'}
+                  {selectedCommand.location === 'user' ? t('user') : t('project')}
                 </Badge>
                 <Badge variant="outline">{selectedCommand.type}</Badge>
-                {selectedCommand.enabled && <Badge variant="outline">Enabled</Badge>}
+                {selectedCommand.enabled && <Badge variant="outline">{t('enabled')}</Badge>}
               </div>
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="overview" className="w-full">
                 <TabsList>
-                  <TabsTrigger value="overview">Overview</TabsTrigger>
-                  <TabsTrigger value="useguide">Usage Guide</TabsTrigger>
-                  <TabsTrigger value="instructions">Instructions</TabsTrigger>
-                  <TabsTrigger value="details">Details</TabsTrigger>
+                  <TabsTrigger value="overview">{t('tabs.overview')}</TabsTrigger>
+                  <TabsTrigger value="useguide">{t('tabs.useguide')}</TabsTrigger>
+                  <TabsTrigger value="instructions">{t('tabs.instructions')}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview" className="space-y-4 mt-4">
                   <div>
-                    <h3 className="font-semibold mb-2">Usage</h3>
+                    <h3 className="font-semibold mb-2">{t('overview.usage')}</h3>
                     <code className="block bg-muted p-3 rounded-md font-mono text-sm">
                       {selectedCommand.usage}
                     </code>
                   </div>
 
                   <div>
-                    <h3 className="font-semibold mb-2">Description</h3>
+                    <h3 className="font-semibold mb-2">{t('overview.description')}</h3>
                     <p className="text-muted-foreground">{selectedCommand.description}</p>
                   </div>
 
                   {selectedCommand.filePath && (
                     <div>
-                      <h3 className="font-semibold mb-2">File Path</h3>
+                      <h3 className="font-semibold mb-2">{t('overview.filePath')}</h3>
                       <code className="block bg-muted p-3 rounded-md font-mono text-sm break-all">
                         {selectedCommand.filePath}
                       </code>
@@ -203,34 +390,34 @@ export default function Commands() {
 
                 <TabsContent value="useguide" className="space-y-4 mt-4">
                   <div className="prose prose-sm max-w-none dark:prose-invert">
-                    <h3>How to Use This Command</h3>
+                    <h3>{t('useguide.title')}</h3>
 
                     <div className="bg-muted p-4 rounded-md">
-                      <h4 className="text-sm font-semibold mb-2">Basic Usage</h4>
-                      <p className="text-sm mb-2">In Claude Code, enter the following command to execute:</p>
+                      <h4 className="text-sm font-semibold mb-2">{t('useguide.basicUsage')}</h4>
+                      <p className="text-sm mb-2">{t('useguide.basicUsageDesc')}</p>
                       <code className="block bg-background p-3 rounded-md font-mono text-sm">
                         {selectedCommand.usage}
                       </code>
                     </div>
 
                     <div className="bg-muted p-4 rounded-md mt-4">
-                      <h4 className="text-sm font-semibold mb-2">Command Description</h4>
+                      <h4 className="text-sm font-semibold mb-2">{t('useguide.commandDescription')}</h4>
                       <p className="text-sm">{selectedCommand.description}</p>
                     </div>
 
                     {selectedCommand.location && (
                       <div className="bg-muted p-4 rounded-md mt-4">
-                        <h4 className="text-sm font-semibold mb-2">Scope</h4>
+                        <h4 className="text-sm font-semibold mb-2">{t('useguide.scope')}</h4>
                         <p className="text-sm">
                           {selectedCommand.location === 'user' ? (
                             <>
-                              <Badge variant="default" className="mr-2">User Level</Badge>
-                              This command is globally available in all projects
+                              <Badge variant="default" className="mr-2">{t('useguide.userLevel')}</Badge>
+                              {t('useguide.userLevelDesc')}
                             </>
                           ) : (
                             <>
-                              <Badge variant="secondary" className="mr-2">Project Level</Badge>
-                              This command is only available in the current project
+                              <Badge variant="secondary" className="mr-2">{t('useguide.projectLevel')}</Badge>
+                              {t('useguide.projectLevelDesc')}
                             </>
                           )}
                         </p>
@@ -238,19 +425,19 @@ export default function Commands() {
                     )}
 
                     <div className="bg-muted p-4 rounded-md mt-4">
-                      <h4 className="text-sm font-semibold mb-2">Usage Steps</h4>
+                      <h4 className="text-sm font-semibold mb-2">{t('useguide.usageSteps')}</h4>
                       <ol className="list-decimal list-inside space-y-2 text-sm">
-                        <li>Enter <code>{selectedCommand.usage}</code> in Claude Code's chat interface</li>
-                        <li>The command will automatically expand and execute its defined instructions</li>
-                        <li>Claude will complete the corresponding tasks according to the command's instructions</li>
-                        <li>Review the execution results and perform follow-up operations as needed</li>
+                        <li>{t('useguide.step1')}</li>
+                        <li>{t('useguide.step2')}</li>
+                        <li>{t('useguide.step3')}</li>
+                        <li>{t('useguide.step4')}</li>
                       </ol>
                     </div>
 
                     {selectedCommand.filePath && (
                       <div className="bg-muted p-4 rounded-md mt-4">
-                        <h4 className="text-sm font-semibold mb-2">Edit Command</h4>
-                        <p className="text-sm mb-2">To modify this command, you can directly edit the following file:</p>
+                        <h4 className="text-sm font-semibold mb-2">{t('useguide.editCommand')}</h4>
+                        <p className="text-sm mb-2">{t('useguide.editCommandDesc')}</p>
                         <code className="block bg-background p-3 rounded-md font-mono text-xs break-all">
                           {selectedCommand.filePath}
                         </code>
@@ -259,79 +446,92 @@ export default function Commands() {
 
                     <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 p-4 rounded-md mt-4">
                       <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                        💡 Tips
+                        {t('useguide.tips')}
                       </h4>
                       <ul className="list-disc list-inside space-y-1 text-sm">
-                        <li>Commands start with a slash <code>/</code></li>
-                        <li>Command names typically use lowercase letters and hyphens</li>
-                        <li>You can configure <code>allowed-tools</code> in the command file's frontmatter to restrict which tools Claude can use</li>
-                        <li>Command instructions support Markdown format and dynamic execution syntax <code>!`command`</code></li>
+                        <li>{t('useguide.tip1')}</li>
+                        <li>{t('useguide.tip2')}</li>
+                        <li>{t('useguide.tip3')}</li>
+                        <li>{t('useguide.tip4')}</li>
                       </ul>
                     </div>
                   </div>
                 </TabsContent>
 
                 <TabsContent value="instructions" className="mt-4">
-                  {selectedCommand.instructions ? (
-                    <div className="prose prose-sm max-w-none dark:prose-invert">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        rehypePlugins={[rehypeRaw]}
-                      >
-                        {selectedCommand.instructions}
-                      </ReactMarkdown>
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground">No instructions available.</p>
-                  )}
-                </TabsContent>
-
-                <TabsContent value="details" className="space-y-4 mt-4">
-                  <div>
-                    <h3 className="font-semibold mb-2">Command Type</h3>
-                    <Badge>{selectedCommand.type}</Badge>
-                  </div>
-
-                  <div>
-                    <h3 className="font-semibold mb-2">Pattern</h3>
-                    <code className="block bg-muted p-3 rounded-md font-mono text-sm">
-                      {selectedCommand.pattern}
-                    </code>
-                  </div>
-
-                  <div>
-                    <h3 className="font-semibold mb-2">Scope</h3>
-                    <Badge variant="outline">{selectedCommand.scope}</Badge>
-                  </div>
-
-                  <div>
-                    <h3 className="font-semibold mb-2">Handler</h3>
-                    <div className="space-y-2">
-                      <div>
-                        <span className="text-sm font-medium">Type:</span>
-                        <Badge className="ml-2" variant="secondary">{selectedCommand.handler.type}</Badge>
-                      </div>
-                      {selectedCommand.handler.code && (
-                        <div>
-                          <span className="text-sm font-medium mb-2 block">Code:</span>
-                          <pre className="bg-muted p-3 rounded-md overflow-auto max-h-96">
-                            <code className="font-mono text-sm">{selectedCommand.handler.code}</code>
-                          </pre>
-                        </div>
+                  <div className="space-y-4">
+                    <Textarea
+                      value={selectedCommand.rawContent || selectedCommand.instructions || ''}
+                      onChange={(e) => {
+                        const updatedCommand = { ...selectedCommand, rawContent: e.target.value }
+                        setSelectedCommand(updatedCommand)
+                        setSaveSuccess(false)
+                      }}
+                      className="min-h-[500px] font-mono text-sm"
+                      placeholder={t('noInstructions')}
+                    />
+                    <div className="flex justify-end items-center gap-3">
+                      {saveSuccess && (
+                        <span className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1">
+                          <Check className="h-4 w-4" />
+                          {t('saveSuccess', '保存成功')}
+                        </span>
                       )}
+                      <Button
+                        onClick={async () => {
+                          if (!selectedCommand) return
+
+                          const content = selectedCommand.rawContent || ''
+
+                          // 验证格式
+                          const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/)
+                          if (!frontmatterMatch) {
+                            alert(t('errors.missingFrontmatter', '命令文件必须包含 frontmatter (--- ... ---)'))
+                            return
+                          }
+
+                          // 检查是否有 description
+                          const frontmatterContent = frontmatterMatch[1]
+                          const hasDescription = /^description\s*:/m.test(frontmatterContent)
+                          if (!hasDescription) {
+                            alert(t('errors.missingDescription', '命令文件必须在 frontmatter 中包含 description 字段'))
+                            return
+                          }
+
+                          // 检查 description 是否为空
+                          const descMatch = frontmatterContent.match(/^description\s*:\s*(.*)$/m)
+                          if (descMatch && !descMatch[1].trim()) {
+                            alert(t('errors.emptyDescription', 'description 字段不能为空'))
+                            return
+                          }
+
+                          setSaving(true)
+                          setSaveSuccess(false)
+                          try {
+                            // 直接保存 rawContent 到文件
+                            await api.commands.saveRaw(selectedCommand.name, content, selectedCommand.filePath || '')
+                            // 重新加载命令
+                            const updatedCommands = await api.commands.getAll()
+                            setCommands(updatedCommands)
+                            const updated = updatedCommands.find(c => c.name === selectedCommand.name)
+                            if (updated) setSelectedCommand(updated)
+                            setSaveSuccess(true)
+                            // 3秒后自动隐藏成功提示
+                            setTimeout(() => setSaveSuccess(false), 3000)
+                          } catch (error) {
+                            console.error('[Commands Page] Failed to save:', error)
+                            alert(t('errors.saveFailed') + ': ' + (error as Error).message)
+                          } finally {
+                            setSaving(false)
+                          }
+                        }}
+                        disabled={saving}
+                      >
+                        <Save className="h-4 w-4 mr-1" />
+                        {saving ? t('dialog.saving') : t('dialog.save')}
+                      </Button>
                     </div>
                   </div>
-
-                  {selectedCommand.aliases && selectedCommand.aliases.length > 0 && (
-                    <div>
-                      <h3 className="font-semibold mb-2">Aliases</h3>
-                      <div className="flex gap-2 flex-wrap">
-                        {selectedCommand.aliases.map((alias) => (
-                          <Badge key={alias} variant="outline">{alias}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </TabsContent>
               </Tabs>
             </CardContent>
@@ -340,11 +540,163 @@ export default function Commands() {
           <Card className="h-full flex items-center justify-center">
             <CardContent className="text-center">
               <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">Select a command to view details</p>
+              <p className="text-muted-foreground">{t('selectCommand')}</p>
             </CardContent>
           </Card>
         )}
       </div>
+
+      {/* Edit/Create Dialog */}
+      <Dialog open={isEditing || isCreating} onOpenChange={(open) => !open && handleCancelEdit()}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {isCreating ? t('dialog.createTitle') : `${t('dialog.editTitle')}: /${editForm.name}`}
+            </DialogTitle>
+            <DialogDescription>
+              {isCreating
+                ? t('dialog.createDescription')
+                : t('dialog.editDescription')}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Validation Errors */}
+            {validationErrors.length > 0 && (
+              <div className="bg-destructive/10 border border-destructive/50 text-destructive rounded-md p-4">
+                <h4 className="font-semibold mb-2 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  {t('validation.title')}
+                </h4>
+                <p className="text-sm mb-2">{t('validation.fixErrors')}</p>
+                <ul className="list-disc list-inside space-y-1 text-sm">
+                  {validationErrors.map((error, index) => (
+                    <li key={index}>{error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="cmd-name">{t('dialog.name')}</Label>
+              <Input
+                id="cmd-name"
+                placeholder={t('dialog.namePlaceholder')}
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                disabled={isEditing}
+              />
+              <p className="text-xs text-muted-foreground">
+                {t('dialog.nameHint')} /{editForm.name || 'command-name'}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="cmd-location">{t('dialog.location')}</Label>
+              <Select
+                value={editForm.location}
+                onValueChange={(value: 'user' | 'project') =>
+                  setEditForm({ ...editForm, location: value, projectPath: value === 'user' ? '' : editForm.projectPath })
+                }
+                disabled={isEditing}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="project">
+                    <div className="flex items-center gap-2">
+                      <FolderOpen className="h-4 w-4" />
+                      {t('dialog.locationProject')}
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="user">
+                    <div className="flex items-center gap-2">
+                      <Globe className="h-4 w-4" />
+                      {t('dialog.locationUser')}
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* 项目路径选择 - 仅当选择 project 时显示 */}
+            {editForm.location === 'project' && (
+              <div className="space-y-2">
+                <Label>{t('dialog.projectPath')}</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={editForm.projectPath}
+                    placeholder={t('dialog.projectPathPlaceholder')}
+                    readOnly
+                    className="flex-1"
+                  />
+                  <Button type="button" variant="outline" onClick={handleSelectProjectPath}>
+                    <FolderOpen className="h-4 w-4 mr-1" />
+                    {t('dialog.browse')}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t('dialog.projectPathHint')}: {editForm.projectPath ? `${editForm.projectPath}/.claude/commands/${editForm.name || 'command-name'}/` : t('dialog.projectPathRequired')}
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="cmd-rawcontent">{t('dialog.rawContent', 'Markdown Content')}</Label>
+              <Textarea
+                id="cmd-rawcontent"
+                placeholder={`---
+description: ${t('dialog.descriptionPlaceholder')}
+argument-hint: [arg1] [arg2?]
+---
+
+# Command Title
+
+Your command instructions here...`}
+                value={editForm.instructions}
+                onChange={(e) => setEditForm({ ...editForm, instructions: e.target.value })}
+                className="min-h-[400px] font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                {t('dialog.rawContentHint', 'Edit the complete markdown content including frontmatter (---...---)')}
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCancelEdit}>
+              <X className="h-4 w-4 mr-1" />
+              {t('dialog.cancel')}
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
+              <Save className="h-4 w-4 mr-1" />
+              {saving ? t('dialog.saving') : t('dialog.save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('deleteDialog.title')}</DialogTitle>
+            <DialogDescription>
+              {t('deleteDialog.description')} (/{selectedCommand?.name})
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              {t('deleteDialog.cancel')}
+            </Button>
+            <Button variant="destructive" onClick={handleDelete}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              {t('deleteDialog.delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

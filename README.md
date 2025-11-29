@@ -1,47 +1,100 @@
 # Claude Code Debugger & Manager
 
-A powerful desktop application for debugging and managing Claude Code skills, agents, hooks, MCP servers, and slash commands.
+A powerful application for debugging and managing Claude Code skills, agents, hooks, MCP servers, and slash commands. Supports both **Desktop (Electron)** and **Web** modes.
 
 ## Features
 
-- 🔍 **Skills Debugger**: Browse, search, and analyze Claude Code skills with detailed information
-- 🤖 **Agents Manager**: Manage and debug Claude Code subagents
-- 🪝 **Hooks Manager**: Configure and test hook execution chains
-- 🌐 **MCP Server Manager**: Manage Model Context Protocol servers and test connections
-- ⚡ **Commands Manager**: Create and test custom slash commands
-- 📊 **Dependency Graph**: Visualize component dependencies and relationships
-- ✏️ **Visual Editors**: Edit configurations through intuitive UI instead of manual JSON editing
-- 📈 **Performance Analysis**: Track execution times, resource usage, and bottlenecks
-- 🔄 **Version Control**: Configuration change history and rollback
-- 🤝 **Team Collaboration**: Share configurations and templates
+- **Skills Browser**: Browse, search, and analyze Claude Code skills with detailed information including triggers, scripts, and references
+- **Agents Manager**: Manage and debug Claude Code subagents
+- **Hooks Manager**: Configure, test, and debug hook execution chains with real-time execution logs
+  - Support for all hook types: SessionStart, SessionEnd, PreToolUse, PostToolUse, etc.
+  - Launch debug sessions in external terminal
+  - View execution logs with detailed output
+- **MCP Server Manager**: Manage Model Context Protocol servers and test connections
+- **Commands Manager**: Create and edit custom slash commands with syntax highlighting
+- **CLAUDE.md Manager**: Browse and edit CLAUDE.md files across multiple projects
+- **Dependency Graph**: Visualize component dependencies and relationships
+- **Visual Editors**: Edit configurations through intuitive UI with Monaco Editor
+- **Multi-language Support**: Full i18n support for English and Chinese
+
+## Running Modes
+
+The application supports two running modes:
+
+| Mode | Command | Description |
+|------|---------|-------------|
+| **Desktop (Electron)** | `npm run electron:dev` | Full-featured desktop application |
+| **Web** | `npm run web:dev` | Browser-based access with Express API backend |
+
+### Web Mode Limitations
+
+Some features are only available in Desktop mode:
+- Launch debug sessions (requires local terminal)
+- Hook testing (security reasons)
+- MCP connection testing
+- File watching
+- Project path selection dialog
 
 ## Technology Stack
 
 - **Desktop**: Electron
+- **Backend (Web)**: Express.js
 - **Frontend**: React 18 + TypeScript
 - **UI**: shadcn/ui + Tailwind CSS + Radix UI
 - **State**: Zustand
 - **Visualization**: React Flow
 - **Editor**: Monaco Editor
-- **Database**: SQLite (for logs and history)
+- **i18n**: i18next
+- **Build**: Vite
 
 ## Project Structure
 
 ```
 claude-code-debugger/
-├── electron/           # Electron main process
-│   ├── main.ts        # Main entry point
-│   ├── preload.ts     # Preload script
-│   ├── services/      # Core services
-│   └── ipc/           # IPC handlers
-├── src/               # React frontend
-│   ├── components/    # UI components
-│   ├── pages/         # Page components
-│   ├── stores/        # State management
-│   ├── lib/           # Utilities
-│   └── types/         # TypeScript types
-├── shared/            # Shared code
-│   └── types/         # Shared types
+├── electron/              # Electron main process
+│   ├── main.ts           # Main entry point
+│   ├── preload.cjs       # Preload script (CommonJS)
+│   ├── ipc/              # IPC handlers (modular)
+│   │   ├── index.ts      # Main IPC registry
+│   │   ├── skills.ts     # Skills IPC handlers
+│   │   ├── hooks.ts      # Hooks IPC handlers
+│   │   ├── mcp.ts        # MCP IPC handlers
+│   │   ├── commands.ts   # Commands IPC handlers
+│   │   ├── agents.ts     # Agents IPC handlers
+│   │   ├── claudemd.ts   # CLAUDE.md IPC handlers
+│   │   └── providers.ts  # AI Provider IPC handlers
+│   └── services/         # Backend services
+│       └── file-manager.ts  # File system operations
+├── server/               # Express API server (Web mode)
+│   └── index.ts          # API routes
+├── src/                  # React frontend
+│   ├── App.tsx          # Main app component
+│   ├── main.tsx         # Entry point
+│   ├── i18n/            # Internationalization
+│   │   ├── index.ts     # i18n configuration
+│   │   └── locales/     # Translation files
+│   ├── pages/           # Page components
+│   │   ├── Dashboard.tsx
+│   │   ├── Skills.tsx
+│   │   ├── Agents.tsx
+│   │   ├── Hooks.tsx
+│   │   ├── MCP.tsx
+│   │   ├── Commands.tsx
+│   │   ├── ClaudeMd.tsx
+│   │   ├── Graph.tsx
+│   │   ├── Models.tsx
+│   │   └── Settings.tsx
+│   ├── components/      # Reusable UI components
+│   │   ├── layout/
+│   │   └── ui/          # shadcn/ui components
+│   ├── stores/          # State management
+│   └── lib/             # Utilities and API client
+│       ├── api.ts       # Unified API (Electron IPC / HTTP)
+│       └── utils.ts
+├── shared/              # Shared TypeScript types
+│   └── types/
+├── vite.config.ts       # Vite config (Electron mode)
+├── vite.config.web.ts   # Vite config (Web mode)
 └── package.json
 ```
 
@@ -55,6 +108,10 @@ claude-code-debugger/
 ### Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/lookfree/claude-code-debugger.git
+cd claude-code-debugger
+
 # Install dependencies
 npm install
 ```
@@ -62,26 +119,35 @@ npm install
 ### Development
 
 ```bash
-# Run in development mode (Electron + Vite hot reload)
+# Desktop mode (Electron + Vite hot reload)
 npm run electron:dev
+
+# Web mode (Express API + Vite)
+npm run web:dev
 ```
 
 ### Building
 
 ```bash
-# Build for production
+# Build Desktop app for production
 npm run electron:build
+
+# Build Web app for production
+npm run web:build
 ```
 
-This will create distributable packages in the `release/` directory.
+## npm Scripts
 
-## Usage
-
-1. **Launch the Application**: Start the app and it will automatically detect your Claude Code configuration
-2. **Browse Components**: Navigate through Skills, Agents, Hooks, MCP Servers, and Commands
-3. **View Dependencies**: Use the Dependency Graph to understand relationships
-4. **Edit Configurations**: Use visual editors to modify configurations
-5. **Test & Debug**: Test MCP connections, run hooks, and debug executions
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start Vite dev server only |
+| `npm run electron:dev` | Start Electron desktop app with hot reload |
+| `npm run electron:build` | Build Electron app for distribution |
+| `npm run web:dev` | Start Web mode (Express API + Vite frontend) |
+| `npm run web:build` | Build Web frontend for production |
+| `npm run server` | Start Express API server only |
+| `npm run build` | Build for production |
+| `npm run lint` | Run ESLint |
 
 ## Configuration
 
@@ -90,29 +156,63 @@ The app reads configuration from:
 - **Global**: `~/.claude/` in your home directory
 
 Supported configuration files:
-- `skills/*.json` - Skill definitions
+- `settings.json` - Claude Code settings including hooks
+- `skills/*.json` or `SKILL.md` - Skill definitions
 - `agents/*.json` - Agent configurations
-- `hooks/*.json` - Hook definitions
-- `commands/*.json` - Slash command definitions
-- `mcpServers.json` - MCP server configurations
+- `hooks/*.json` - Hook definitions (legacy format)
+- `commands/<name>/<name>.md` - Slash command definitions
+- `claude_mcp_config.json` - MCP server configurations
 - `CLAUDE.md` - Project documentation
 
-## Development Roadmap
+## API Endpoints (Web Mode)
 
-- [x] Project setup and architecture
-- [x] Type definitions
-- [x] Electron main process and IPC
-- [x] React frontend basics
-- [x] Skills browser
-- [ ] Agents manager
-- [ ] Hooks manager
-- [ ] MCP server manager
-- [ ] Commands manager
-- [ ] Dependency graph visualization
-- [ ] Visual editors
-- [ ] Performance monitoring
-- [ ] Version control integration
-- [ ] AI-assisted configuration
+The Express API server provides RESTful endpoints:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/health` | Health check |
+| `GET /api/skills` | List all skills |
+| `GET /api/hooks` | List all hooks |
+| `GET /api/commands` | List all commands |
+| `GET /api/mcp` | List MCP servers |
+| `GET /api/claudemd/all` | List all CLAUDE.md files |
+| `GET /api/project/context` | Get project context |
+
+## Architecture
+
+### Electron Mode
+
+```
+Frontend (React)
+    ↓ window.electronAPI.getSkills()
+Preload Script (contextBridge)
+    ↓ ipcRenderer.invoke('skills:getAll')
+Main Process (IPC Handlers)
+    ↓ FileManager.getSkills()
+File System (~/.claude/)
+```
+
+### Web Mode
+
+```
+Frontend (React)
+    ↓ fetch('/api/skills')
+Express API Server
+    ↓ FileManager.getSkills()
+File System (~/.claude/)
+```
+
+### Unified API Client
+
+The `src/lib/api.ts` automatically detects the running environment and uses the appropriate backend:
+
+```typescript
+import { api } from '@/lib/api'
+
+// Works in both Electron and Web modes
+const skills = await api.skills.getAll()
+const hooks = await api.hooks.getAll()
+```
 
 ## Contributing
 
@@ -124,4 +224,4 @@ MIT
 
 ## Author
 
-Built with ❤️ for the Claude Code community
+Built with Claude Code for the Claude Code community

@@ -45,11 +45,29 @@ export class FileManager {
   // Cache for parsed skills
   private skillCache = new Map<string, { skill: Skill; mtime: number }>()
 
-  // Logger with levels
+  // Logger with levels - wrapped to handle EPIPE errors gracefully
   private logger = {
-    info: (msg: string, ...args: unknown[]) => console.log(`[FileManager][INFO]`, msg, ...args),
-    warn: (msg: string, ...args: unknown[]) => console.warn(`[FileManager][WARN]`, msg, ...args),
-    error: (msg: string, ...args: unknown[]) => console.error(`[FileManager][ERROR]`, msg, ...args),
+    info: (msg: string, ...args: unknown[]) => {
+      try {
+        console.log(`[FileManager][INFO]`, msg, ...args)
+      } catch {
+        // Ignore EPIPE errors when stdout is closed
+      }
+    },
+    warn: (msg: string, ...args: unknown[]) => {
+      try {
+        console.warn(`[FileManager][WARN]`, msg, ...args)
+      } catch {
+        // Ignore EPIPE errors when stderr is closed
+      }
+    },
+    error: (msg: string, ...args: unknown[]) => {
+      try {
+        console.error(`[FileManager][ERROR]`, msg, ...args)
+      } catch {
+        // Ignore EPIPE errors when stderr is closed
+      }
+    },
   }
 
   private constructor() {}
@@ -275,15 +293,14 @@ export class FileManager {
       const skillDir = path.dirname(filePath)
 
       // Scan for references directory
-      const references: Array<{ type: string; path: string; description?: string }> = []
+      const references: Array<{ type: 'file' | 'package' | 'api' | 'tool'; path: string; description?: string }> = []
       const referencesDir = path.join(skillDir, 'references')
       if (await this.fileExists(referencesDir)) {
         try {
           const refFiles = await fs.readdir(referencesDir)
           for (const file of refFiles) {
-            const ext = path.extname(file)
             references.push({
-              type: ext.slice(1) || 'file',
+              type: 'file',
               path: `references/${file}`,
             })
           }
@@ -531,6 +548,65 @@ export class FileManager {
 
   // Hooks
   async getHooks(): Promise<Hook[]> {
+    const hooks: Hook[] = []
+
+    // 1. Read hooks from settings.json files (Claude Code's native format)
+    const settingsFiles = [
+      { path: path.join(this.userConfigPath, 'settings.json'), location: 'user' as const },
+      { path: path.join(this.projectPath, '.claude', 'settings.json'), location: 'project' as const },
+      { path: path.join(this.projectPath, '.claude', 'settings.local.json'), location: 'project' as const },
+    ]
+
+    for (const { path: settingsPath, location } of settingsFiles) {
+      try {
+        const settings = await this.readJSONFile<{
+          hooks?: Record<string, Array<{
+            matcher?: string
+            hooks?: Array<{
+              type: string
+              command?: string
+              prompt?: string
+              timeout?: number
+            }>
+          }>>
+        }>(settingsPath)
+
+        if (settings?.hooks) {
+          // Convert Claude Code settings.json hooks format to our Hook format
+          for (const [eventType, matchers] of Object.entries(settings.hooks)) {
+            for (let i = 0; i < matchers.length; i++) {
+              const matcher = matchers[i]
+              const hookName = `${eventType}${matcher.matcher ? `-${matcher.matcher.replace(/[|*]/g, '_')}` : ''}-${i}`
+
+              const actions = (matcher.hooks || []).map(h => ({
+                type: 'execute' as const,
+                command: h.command || h.prompt || '',
+                timeout: h.timeout,
+                continueOnError: false,
+              }))
+
+              const hookObj = {
+                name: hookName,
+                type: eventType as Hook['type'],
+                enabled: true,
+                description: `${eventType} hook${matcher.matcher ? ` for ${matcher.matcher}` : ''}`,
+                pattern: matcher.matcher || '',
+                actions,
+                filePath: settingsPath,
+                location,
+                matcherIndex: i, // Track the index for editing/deleting
+              }
+              this.logger.info('Loaded hook with matcherIndex:', hookName, 'matcherIndex:', i)
+              hooks.push(hookObj)
+            }
+          }
+        }
+      } catch {
+        // Settings file doesn't exist or is invalid, continue
+      }
+    }
+
+    // 2. Also read hooks from legacy .claude/hooks/ directories (for backwards compatibility)
     const projectHooks = await this.scanDirectory(
       path.join(this.projectPath, '.claude', 'hooks'),
       '.json'
@@ -545,7 +621,6 @@ export class FileManager {
       ...userHooks.map((p) => ({ path: p, location: 'user' as const })),
     ]
 
-    const hooks: Hook[] = []
     for (const { path: hookPath, location } of allHookPaths) {
       const hook = await this.readJSONFile<Hook>(hookPath)
       if (hook) {
@@ -571,10 +646,213 @@ export class FileManager {
     await this.writeJSONFile(filePath, hook)
   }
 
+  async saveHookRaw(_name: string, content: string, filePath: string): Promise<void> {
+    if (!filePath) {
+      throw new Error('File path is required for saving raw hook content')
+    }
+
+    // 验证 JSON 格式
+    try {
+      JSON.parse(content)
+    } catch (error) {
+      throw new Error('Invalid JSON content: ' + (error as Error).message)
+    }
+
+    // 确保目录存在
+    const dir = path.dirname(filePath)
+    await fs.mkdir(dir, { recursive: true })
+
+    this.logger.info('Saving raw hook content to:', filePath)
+    await fs.writeFile(filePath, content, 'utf-8')
+    this.logger.info('Saved raw hook to:', filePath)
+  }
+
   async deleteHook(name: string): Promise<void> {
     const hook = await this.getHook(name)
     if (hook?.filePath) {
       await fs.unlink(hook.filePath)
+    }
+  }
+
+  // Save hook to Claude Code settings.json format
+  async saveHookToSettings(
+    hookType: string,
+    hookConfig: { matcher?: string; hooks: Array<{ type: string; command?: string; prompt?: string; timeout?: number }> },
+    location: 'user' | 'project',
+    projectPath?: string,
+    matcherIndex?: number // If provided, update existing hook at this index; otherwise add new
+  ): Promise<void> {
+    const settingsPath = location === 'user'
+      ? path.join(this.userConfigPath, 'settings.json')
+      : path.join(projectPath || this.projectPath, '.claude', 'settings.json')
+
+    this.logger.info('Saving hook to settings:', settingsPath, 'matcherIndex:', matcherIndex)
+
+    // Read existing settings
+    let settings: Record<string, unknown> = {}
+    try {
+      const content = await fs.readFile(settingsPath, 'utf-8')
+      settings = JSON.parse(content)
+    } catch {
+      // File doesn't exist or is invalid, start with empty settings
+    }
+
+    // Initialize hooks object if it doesn't exist
+    if (!settings.hooks) {
+      settings.hooks = {}
+    }
+
+    const hooksObj = settings.hooks as Record<string, unknown[]>
+
+    // Initialize this hook type array if it doesn't exist
+    if (!hooksObj[hookType]) {
+      hooksObj[hookType] = []
+    }
+
+    // Update existing or add new hook config
+    if (matcherIndex !== undefined && matcherIndex >= 0 && matcherIndex < hooksObj[hookType].length) {
+      // Update existing hook at the specified index
+      hooksObj[hookType][matcherIndex] = hookConfig
+      this.logger.info('Updated existing hook at index:', matcherIndex)
+    } else {
+      // Add new hook config
+      hooksObj[hookType].push(hookConfig)
+      this.logger.info('Added new hook config')
+    }
+
+    // Ensure directory exists
+    const dir = path.dirname(settingsPath)
+    await fs.mkdir(dir, { recursive: true })
+
+    // Write back settings
+    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8')
+    this.logger.info('Saved hook to settings:', settingsPath)
+  }
+
+  // Delete hook from settings.json
+  async deleteHookFromSettings(
+    hookType: string,
+    matcherIndex: number,
+    location: 'user' | 'project',
+    projectPath?: string
+  ): Promise<void> {
+    const settingsPath = location === 'user'
+      ? path.join(this.userConfigPath, 'settings.json')
+      : path.join(projectPath || this.projectPath, '.claude', 'settings.json')
+
+    this.logger.info('Deleting hook from settings:', settingsPath, 'type:', hookType, 'index:', matcherIndex)
+
+    // Read existing settings
+    let settings: Record<string, unknown> = {}
+    try {
+      const content = await fs.readFile(settingsPath, 'utf-8')
+      settings = JSON.parse(content)
+    } catch {
+      this.logger.warn('Settings file not found:', settingsPath)
+      return
+    }
+
+    const hooksObj = settings.hooks as Record<string, Array<{
+      matcher?: string
+      hooks?: Array<{
+        type: string
+        command?: string
+        prompt?: string
+        timeout?: number
+      }>
+    }>> | undefined
+    if (!hooksObj || !hooksObj[hookType]) {
+      this.logger.warn('Hook type not found:', hookType)
+      return
+    }
+
+    // Get the hook config before deleting to find script files
+    const hookConfig = hooksObj[hookType][matcherIndex]
+    if (hookConfig?.hooks) {
+      // Delete associated script files
+      const basePath = location === 'user'
+        ? this.userConfigPath
+        : (projectPath || this.projectPath)
+
+      for (const hook of hookConfig.hooks) {
+        const command = hook.command || hook.prompt || ''
+        // Check if it's a script file (ends with .sh or starts with .claude/)
+        if (command && (command.endsWith('.sh') || command.startsWith('.claude/'))) {
+          const fullPath = path.join(basePath, command)
+          try {
+            await fs.unlink(fullPath)
+            this.logger.info('Deleted script file:', fullPath)
+          } catch (error) {
+            // Script file doesn't exist, that's fine
+            this.logger.warn('Failed to delete script file (may not exist):', fullPath, error)
+          }
+        }
+      }
+    }
+
+    // Remove the hook at the specified index
+    hooksObj[hookType].splice(matcherIndex, 1)
+
+    // Remove the hook type if empty
+    if (hooksObj[hookType].length === 0) {
+      delete hooksObj[hookType]
+    }
+
+    // Remove hooks object if empty
+    if (Object.keys(hooksObj).length === 0) {
+      delete settings.hooks
+    }
+
+    // Write back settings
+    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8')
+    this.logger.info('Deleted hook from settings:', settingsPath)
+  }
+
+  // Create hook shell script file
+  async createHookScript(
+    scriptPath: string,
+    content: string,
+    location: 'user' | 'project',
+    projectPath?: string
+  ): Promise<string> {
+    // Determine base path
+    const basePath = location === 'user'
+      ? this.userConfigPath
+      : (projectPath || this.projectPath)
+
+    // Full path to the script
+    const fullPath = path.join(basePath, scriptPath)
+
+    this.logger.info('Creating hook script at:', fullPath)
+
+    // Ensure directory exists
+    const dir = path.dirname(fullPath)
+    await fs.mkdir(dir, { recursive: true })
+
+    // Write the script content
+    await fs.writeFile(fullPath, content, { encoding: 'utf-8', mode: 0o755 })
+
+    this.logger.info('Created hook script:', fullPath)
+    return fullPath
+  }
+
+  // Read hook script content
+  async readHookScript(
+    scriptPath: string,
+    location: 'user' | 'project',
+    projectPath?: string
+  ): Promise<string | null> {
+    const basePath = location === 'user'
+      ? this.userConfigPath
+      : (projectPath || this.projectPath)
+
+    const fullPath = path.join(basePath, scriptPath)
+
+    try {
+      const content = await fs.readFile(fullPath, 'utf-8')
+      return content
+    } catch {
+      return null
     }
   }
 
@@ -695,8 +973,18 @@ export class FileManager {
       const description = frontmatter.description || 'No description'
 
       // Extract instructions (everything after frontmatter)
+      // Also strip any additional frontmatter blocks that might exist
+      let instructions = content
       const instructionsMatch = content.match(/^---[\s\S]*?---\n([\s\S]*)$/)
-      const instructions = instructionsMatch ? instructionsMatch[1].trim() : content
+      if (instructionsMatch) {
+        instructions = instructionsMatch[1].trim()
+        // Check for and remove any additional frontmatter blocks
+        const additionalFrontmatterMatch = instructions.match(/^---\s*\n[\s\S]*?\n---\s*\n?/)
+        if (additionalFrontmatterMatch) {
+          instructions = instructions.slice(additionalFrontmatterMatch[0].length).trim()
+          this.logger.warn('Stripped additional frontmatter from instructions in:', filePath)
+        }
+      }
 
       return {
         name: commandName,
@@ -709,6 +997,7 @@ export class FileManager {
           code: instructions
         },
         instructions,
+        rawContent: content,
         scope: location === 'user' ? 'global' : 'project',
         enabled: true,
         filePath,
@@ -726,19 +1015,134 @@ export class FileManager {
   }
 
   async saveCommand(command: SlashCommand): Promise<void> {
-    const location = command.location || 'project'
-    const dir = location === 'project'
-      ? path.join(this.projectPath, '.claude', 'commands')
-      : path.join(this.userConfigPath, 'commands')
+    // Validate command format
+    const validationErrors: string[] = []
 
-    const filePath = path.join(dir, `${command.name}.json`)
-    await this.writeJSONFile(filePath, command)
+    // Validate name
+    if (!command.name || !command.name.trim()) {
+      validationErrors.push('Command name is required')
+    } else {
+      const name = command.name.trim()
+      if (!/^[a-z][a-z0-9-]*$/.test(name)) {
+        validationErrors.push('Command name can only contain lowercase letters, numbers, and hyphens, and must start with a letter')
+      }
+      if (name.length > 50) {
+        validationErrors.push('Command name cannot exceed 50 characters')
+      }
+    }
+
+    // Validate description
+    if (!command.description || !command.description.trim()) {
+      validationErrors.push('Description is required')
+    } else if (command.description.length > 200) {
+      validationErrors.push('Description cannot exceed 200 characters')
+    }
+
+    // Validate instructions
+    if (!command.instructions || !command.instructions.trim()) {
+      validationErrors.push('Instructions content is required')
+    }
+
+    // If there are validation errors, throw an error
+    if (validationErrors.length > 0) {
+      const error = new Error('Command validation failed: ' + validationErrors.join('; '))
+      this.logger.error('Command validation failed:', validationErrors)
+      throw error
+    }
+
+    const location = command.location || 'project'
+
+    // 确定基础目录
+    // 如果是 project 并且提供了 filePath（包含项目路径），则使用它
+    // 否则使用默认的 projectPath 或 userConfigPath
+    let baseDir: string
+    if (location === 'project') {
+      if (command.filePath) {
+        // filePath 可能是完整路径或只是项目根目录
+        // 如果是项目根目录，需要添加 .claude/commands
+        if (command.filePath.includes('/.claude/commands/')) {
+          // 从完整路径提取项目根目录
+          const match = command.filePath.match(/^(.+)\/\.claude\/commands\//)
+          baseDir = match ? path.join(match[1], '.claude', 'commands') : path.join(this.projectPath, '.claude', 'commands')
+        } else {
+          // filePath 是项目根目录
+          baseDir = path.join(command.filePath, '.claude', 'commands')
+        }
+      } else {
+        baseDir = path.join(this.projectPath, '.claude', 'commands')
+      }
+    } else {
+      baseDir = path.join(this.userConfigPath, 'commands')
+    }
+
+    // Command files are stored as: commands/<name>/<name>.md
+    const commandDir = path.join(baseDir, command.name)
+    const filePath = path.join(commandDir, `${command.name}.md`)
+
+    // Ensure directory exists
+    await fs.mkdir(commandDir, { recursive: true })
+
+    // Build markdown content with frontmatter
+    const frontmatter = [
+      '---',
+      `description: ${command.description || 'No description'}`,
+    ]
+
+    // Add allowed-tools if specified in handler
+    if (command.handler?.allowedTools) {
+      frontmatter.push(`allowed-tools: ${command.handler.allowedTools}`)
+    }
+
+    frontmatter.push('---')
+
+    // Strip existing frontmatter from instructions if present
+    let instructions = command.instructions || ''
+    const frontmatterMatch = instructions.match(/^---\s*\n[\s\S]*?\n---\s*\n?/)
+    if (frontmatterMatch) {
+      instructions = instructions.slice(frontmatterMatch[0].length).trim()
+      this.logger.info('Stripped existing frontmatter from instructions')
+    }
+
+    const content = frontmatter.join('\n') + '\n\n' + instructions
+
+    await fs.writeFile(filePath, content, 'utf-8')
+    this.logger.info('Saved command to:', filePath)
+  }
+
+  async saveCommandRaw(_name: string, content: string, filePath: string): Promise<void> {
+    if (!filePath) {
+      throw new Error('File path is required for saving raw command content')
+    }
+
+    // 确保目录存在
+    const dir = path.dirname(filePath)
+    await fs.mkdir(dir, { recursive: true })
+
+    this.logger.info('Saving raw command content to:', filePath)
+    await fs.writeFile(filePath, content, 'utf-8')
+    this.logger.info('Saved raw command to:', filePath)
   }
 
   async deleteCommand(name: string): Promise<void> {
     const command = await this.getCommand(name)
     if (command?.filePath) {
+      // 删除命令文件
       await fs.unlink(command.filePath)
+
+      // 同时删除命令目录（如果目录为空）
+      const commandDir = path.dirname(command.filePath)
+      try {
+        const files = await fs.readdir(commandDir)
+        if (files.length === 0) {
+          await fs.rmdir(commandDir)
+          this.logger.info('Deleted empty command directory:', commandDir)
+        }
+      } catch (error) {
+        // 目录可能不存在或无法删除，忽略错误
+        this.logger.warn('Could not remove command directory:', error)
+      }
+
+      this.logger.info('Deleted command:', name)
     }
   }
 
@@ -836,7 +1240,7 @@ export class FileManager {
     currentDepth = 0,
     scannedCount = { count: 0 }
   ): Promise<Array<{ content: string; location: 'project'; filePath: string; exists: boolean; projectName: string }>> {
-    const results = []
+    const results: Array<{ content: string; location: 'project'; filePath: string; exists: boolean; projectName: string }> = []
 
     // Stop if max depth exceeded
     if (currentDepth > maxDepth) {

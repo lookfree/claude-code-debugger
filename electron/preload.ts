@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Skill, Agent, Hook, MCPServers, MCPServerConfig, SlashCommand, ProjectContext, ConfigFile } from '../shared/types'
+import type { Skill, Agent, Hook, MCPServers, MCPServerConfig, SlashCommand, ProjectContext, ConfigFile, Provider, HookExecutionLog } from '../shared/types'
 
 console.log('[Preload] Script is loading...')
 
@@ -22,7 +22,50 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getHooks: (): Promise<Hook[]> => ipcRenderer.invoke('hooks:getAll'),
   getHook: (name: string): Promise<Hook | null> => ipcRenderer.invoke('hooks:get', name),
   saveHook: (hook: Hook): Promise<void> => ipcRenderer.invoke('hooks:save', hook),
+  saveHookRaw: (name: string, content: string, filePath: string): Promise<void> => ipcRenderer.invoke('hooks:saveRaw', name, content, filePath),
+  saveHookToSettings: (
+    hookType: string,
+    hookConfig: { matcher?: string; hooks: Array<{ type: string; command?: string; prompt?: string; timeout?: number }> },
+    location: 'user' | 'project',
+    projectPath?: string,
+    matcherIndex?: number
+  ): Promise<void> => ipcRenderer.invoke('hooks:saveToSettings', hookType, hookConfig, location, projectPath, matcherIndex),
   deleteHook: (name: string): Promise<void> => ipcRenderer.invoke('hooks:delete', name),
+  deleteHookFromSettings: (
+    hookType: string,
+    matcherIndex: number,
+    location: 'user' | 'project',
+    projectPath?: string
+  ): Promise<void> => ipcRenderer.invoke('hooks:deleteFromSettings', hookType, matcherIndex, location, projectPath),
+  createHookScript: (
+    scriptPath: string,
+    content: string,
+    location: 'user' | 'project',
+    projectPath?: string
+  ): Promise<string> => ipcRenderer.invoke('hooks:createScript', scriptPath, content, location, projectPath),
+  readHookScript: (
+    scriptPath: string,
+    location: 'user' | 'project',
+    projectPath?: string
+  ): Promise<string | null> => ipcRenderer.invoke('hooks:readScript', scriptPath, location, projectPath),
+  getHookLogs: (): Promise<HookExecutionLog[]> => ipcRenderer.invoke('hooks:getLogs'),
+  getHookDebugLogs: (): Promise<HookExecutionLog[]> => ipcRenderer.invoke('hooks:getDebugLogs'),
+  clearHookLogs: (): Promise<boolean> => ipcRenderer.invoke('hooks:clearLogs'),
+  launchDebugSession: (
+    hookType: string,
+    projectPath?: string
+  ): Promise<{ success: boolean; message: string; pid?: number }> =>
+    ipcRenderer.invoke('hooks:launchDebugSession', hookType, projectPath),
+  stopDebugSession: (pid: number): Promise<boolean> =>
+    ipcRenderer.invoke('hooks:stopDebugSession', pid),
+  testHook: (
+    hookName: string,
+    command: string,
+    hookType: string,
+    location: 'user' | 'project',
+    projectPath?: string,
+    timeout?: number
+  ): Promise<HookExecutionLog> => ipcRenderer.invoke('hooks:test', hookName, command, hookType, location, projectPath, timeout),
 
   // MCP
   getMCPServers: (): Promise<MCPServers> => ipcRenderer.invoke('mcp:getAll'),
@@ -35,6 +78,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCommands: (): Promise<SlashCommand[]> => ipcRenderer.invoke('commands:getAll'),
   getCommand: (name: string): Promise<SlashCommand | null> => ipcRenderer.invoke('commands:get', name),
   saveCommand: (command: SlashCommand): Promise<void> => ipcRenderer.invoke('commands:save', command),
+  saveCommandRaw: (name: string, content: string, filePath: string): Promise<void> => ipcRenderer.invoke('commands:saveRaw', name, content, filePath),
   deleteCommand: (name: string): Promise<void> => ipcRenderer.invoke('commands:delete', name),
 
   // CLAUDE.md
@@ -56,6 +100,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Validation
   validateConfig: (type: string, config: unknown): Promise<{ valid: boolean; errors?: string[] }> => ipcRenderer.invoke('validate:config', type, config),
+
+  // Providers
+  getProviders: (): Promise<Provider[]> => ipcRenderer.invoke('providers:getAll'),
+  getActiveProvider: (): Promise<Provider | null> => ipcRenderer.invoke('providers:getActive'),
+  addProvider: (provider: Omit<Provider, 'id' | 'createdAt' | 'updatedAt'>): Promise<Provider> => ipcRenderer.invoke('providers:add', provider),
+  updateProvider: (id: string, updates: Partial<Provider>): Promise<Provider> => ipcRenderer.invoke('providers:update', id, updates),
+  deleteProvider: (id: string): Promise<void> => ipcRenderer.invoke('providers:delete', id),
+  switchProvider: (id: string): Promise<Provider> => ipcRenderer.invoke('providers:switch', id),
+  readClaudeSettings: (): Promise<string | null> => ipcRenderer.invoke('providers:readClaudeSettings'),
 })
 
 console.log('[Preload] electronAPI exposed to window')
@@ -80,7 +133,48 @@ declare global {
       getHooks: () => Promise<Hook[]>
       getHook: (name: string) => Promise<Hook | null>
       saveHook: (hook: Hook) => Promise<void>
+      saveHookRaw: (name: string, content: string, filePath: string) => Promise<void>
+      saveHookToSettings: (
+        hookType: string,
+        hookConfig: { matcher?: string; hooks: Array<{ type: string; command?: string; prompt?: string; timeout?: number }> },
+        location: 'user' | 'project',
+        projectPath?: string,
+        matcherIndex?: number
+      ) => Promise<void>
       deleteHook: (name: string) => Promise<void>
+      deleteHookFromSettings: (
+        hookType: string,
+        matcherIndex: number,
+        location: 'user' | 'project',
+        projectPath?: string
+      ) => Promise<void>
+      createHookScript: (
+        scriptPath: string,
+        content: string,
+        location: 'user' | 'project',
+        projectPath?: string
+      ) => Promise<string>
+      readHookScript: (
+        scriptPath: string,
+        location: 'user' | 'project',
+        projectPath?: string
+      ) => Promise<string | null>
+      getHookLogs: () => Promise<HookExecutionLog[]>
+      getHookDebugLogs: () => Promise<HookExecutionLog[]>
+      clearHookLogs: () => Promise<boolean>
+      launchDebugSession: (
+        hookType: string,
+        projectPath?: string
+      ) => Promise<{ success: boolean; message: string; pid?: number }>
+      stopDebugSession: (pid: number) => Promise<boolean>
+      testHook: (
+        hookName: string,
+        command: string,
+        hookType: string,
+        location: 'user' | 'project',
+        projectPath?: string,
+        timeout?: number
+      ) => Promise<HookExecutionLog>
 
       // MCP
       getMCPServers: () => Promise<MCPServers>
@@ -93,6 +187,7 @@ declare global {
       getCommands: () => Promise<SlashCommand[]>
       getCommand: (name: string) => Promise<SlashCommand | null>
       saveCommand: (command: SlashCommand) => Promise<void>
+      saveCommandRaw: (name: string, content: string, filePath: string) => Promise<void>
       deleteCommand: (name: string) => Promise<void>
 
       // CLAUDE.md
@@ -112,6 +207,15 @@ declare global {
 
       // Validation
       validateConfig: (type: string, config: unknown) => Promise<{ valid: boolean; errors?: string[] }>
+
+      // Providers
+      getProviders: () => Promise<Provider[]>
+      getActiveProvider: () => Promise<Provider | null>
+      addProvider: (provider: Omit<Provider, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Provider>
+      updateProvider: (id: string, updates: Partial<Provider>) => Promise<Provider>
+      deleteProvider: (id: string) => Promise<void>
+      switchProvider: (id: string) => Promise<Provider>
+      readClaudeSettings: () => Promise<string | null>
     }
   }
 }

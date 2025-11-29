@@ -24,7 +24,7 @@ export function registerMCPHandlers(ipcMain: IpcMain, fileManager: FileManager) 
     await fileManager.saveMCPServers(servers)
   })
 
-  ipcMain.handle('mcp:test', async (_event, name: string) => {
+  ipcMain.handle('mcp:test', async (_event, _name: string) => {
     // TODO: Implement MCP connection testing
     return { success: true, message: 'Connection test not yet implemented' }
   })

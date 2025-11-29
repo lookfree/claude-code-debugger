@@ -8,6 +8,24 @@ import { registerIPCHandlers } from './ipc'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+// Handle EPIPE errors gracefully (when stdout/stderr is closed)
+process.stdout?.on('error', (err) => {
+  if (err.code === 'EPIPE') {
+    // Ignore - pipe was closed (e.g., terminal disconnected)
+    return
+  }
+  // Re-throw other errors
+  throw err
+})
+
+process.stderr?.on('error', (err) => {
+  if (err.code === 'EPIPE') {
+    // Ignore - pipe was closed
+    return
+  }
+  throw err
+})
+
 let mainWindow: BrowserWindow | null = null
 
 const createWindow = () => {
@@ -37,7 +55,7 @@ const createWindow = () => {
     mainWindow?.webContents.executeJavaScript('console.log("[Main->Renderer] electronAPI:", window.electronAPI)')
   })
 
-  mainWindow.webContents.on('preload-error', (event, preloadPath, error) => {
+  mainWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
     console.error('[Main] Preload error:', preloadPath, error)
   })
 

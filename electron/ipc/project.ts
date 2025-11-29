@@ -1,4 +1,4 @@
-import type { IpcMain, dialog } from 'electron'
+import type { IpcMain } from 'electron'
 import type { FileManager } from '../services/file-manager'
 
 export function registerProjectHandlers(ipcMain: IpcMain, fileManager: FileManager) {

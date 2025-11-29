@@ -1,8 +1,6 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import {
   Zap,
   Webhook,
@@ -11,10 +9,8 @@ import {
   BookOpen,
   Sparkles,
   GitBranch,
-  Layers,
   ArrowRight,
   User,
-  Clock,
   MessageSquare,
   CheckCircle2,
   Activity,
@@ -24,12 +20,12 @@ import {
 interface Skill {
   name: string
   description?: string
-  location?: 'user' | 'plugin'
+  location?: 'user' | 'project'
 }
 
 interface Hook {
   name: string
-  event: string
+  type?: string
   description?: string
   location?: 'user' | 'project'
 }
@@ -69,7 +65,7 @@ export default function Graph() {
   })
   const [edges, setEdges] = useState<Array<{ id: string; source: string; target: string; label: string }>>([])
   const [nodes, setNodes] = useState<Array<{ id: string; data: { type: string; label: string } }>>([])
-  const [connectedNodesCount, setConnectedNodesCount] = useState(0)
+  const [_connectedNodesCount, _setConnectedNodesCount] = useState(0)
 
   // Load all data
   useEffect(() => {
@@ -86,10 +82,10 @@ export default function Graph() {
         api.commands.getAll(),
       ])
 
-      setSkills(skillsData)
-      setHooks(hooksData)
-      setMCPServers(mcpData)
-      setCommands(commandsData)
+      setSkills(skillsData as unknown as Skill[])
+      setHooks(hooksData as unknown as Hook[])
+      setMCPServers(mcpData as unknown as Record<string, MCPServer>)
+      setCommands(commandsData as unknown as SlashCommand[])
     } catch (error) {
       console.error('Failed to load data:', error)
     } finally {
@@ -434,7 +430,7 @@ export default function Graph() {
                                   <span className="font-semibold">用户启动 Claude Code</span>
                                 </div>
                                 <p className="text-sm text-muted-foreground">
-                                  触发事件：{chain.find(c => c.hook)?.hook?.event || 'session-start'}
+                                  触发事件：{chain.find(c => c.hook)?.hook?.type || 'session-start'}
                                 </p>
                               </div>
                             </div>
@@ -585,7 +581,7 @@ export default function Graph() {
                           💡 关键理解点
                         </p>
                         <ul className="mt-2 space-y-1 text-xs text-blue-800 dark:text-blue-200">
-                          {hasHook && <li>• Hook 在启动时自动运行，监听 {chain.find(c => c.hook)?.hook?.event} 事件</li>}
+                          {hasHook && <li>• Hook 在启动时自动运行，监听 {chain.find(c => c.hook)?.hook?.type} 事件</li>}
                           {hasMCP && <li>• MCP Server 持续运行在后台，提供工具接口给其他组件调用</li>}
                           {hasSkill && <li>• Skill 根据用户输入被激活，通过 MCP 工具完成任务</li>}
                           {hasCommand && <li>• Command 提供快捷指令，可以触发预定义的操作流程</li>}
@@ -598,7 +594,7 @@ export default function Graph() {
               })()}
             </div>
 
-            {edges.length > 0 && Array.from(new Set(edges.map(e => nodes.find(n => n.id === e.source)?.type))).length === 0 && (
+            {edges.length > 0 && Array.from(new Set(edges.map(e => nodes.find(n => n.id === e.source)?.data?.type))).length === 0 && (
               <div className="text-center py-6 text-muted-foreground">
                 <Info className="h-8 w-8 mx-auto mb-2 opacity-50" />
                 <p className="text-sm">暂无检测到完整的工作流程链</p>

@@ -15,6 +15,7 @@ export interface CommandHandler {
   path?: string // Path to external handler
   skillName?: string
   agentName?: string
+  allowedTools?: string // Comma-separated list of allowed tools
 }
 
 export interface SlashCommand {
@@ -26,6 +27,7 @@ export interface SlashCommand {
   arguments?: CommandArgument[]
   handler: CommandHandler
   instructions?: string // Instructions for Claude
+  rawContent?: string // Raw markdown file content
   aliases?: string[]
   scope: CommandScope
   enabled: boolean

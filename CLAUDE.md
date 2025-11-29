@@ -1,10 +1,26 @@
 # Claude Code Debugger & Manager
 
-A desktop application for debugging and managing Claude Code skills, subagents, hooks, MCP servers, and slash commands.
+A powerful application for debugging and managing Claude Code skills, agents, hooks, MCP servers, and slash commands. Supports both **Desktop (Electron)** and **Web** modes.
 
 ## Overview
 
-This Electron-based desktop application provides a visual interface for managing all Claude Code components. It allows developers to browse, inspect, test, and manage skills, agents, hooks, MCP servers, and slash commands through an intuitive UI.
+This application provides a visual interface for managing all Claude Code components. It allows developers to browse, inspect, test, and manage skills, agents, hooks, MCP servers, and slash commands through an intuitive UI. The application can run as either a desktop application (Electron) or a web application (Express + React).
+
+## Running Modes
+
+| Mode | Command | Description |
+|------|---------|-------------|
+| **Desktop (Electron)** | `npm run electron:dev` | Full-featured desktop application with native integrations |
+| **Web** | `npm run web:dev` | Browser-based access with Express API backend |
+
+### Web Mode Limitations
+
+Some features require desktop mode:
+- Launch debug sessions (requires local terminal)
+- Hook testing (security reasons)
+- MCP connection testing
+- File watching
+- Project path selection dialog
 
 ## Project Structure
 
@@ -13,6 +29,7 @@ claude-code-debugger/
 ├── electron/              # Electron main process
 │   ├── main.ts           # Main process entry point
 │   ├── preload.cjs       # Preload script (CommonJS)
+│   ├── preload.ts        # Preload TypeScript source
 │   ├── ipc/              # IPC handlers (modular)
 │   │   ├── index.ts      # Main IPC registry
 │   │   ├── skills.ts     # Skills IPC handlers
@@ -20,24 +37,21 @@ claude-code-debugger/
 │   │   ├── mcp.ts        # MCP IPC handlers
 │   │   ├── commands.ts   # Commands IPC handlers
 │   │   ├── agents.ts     # Agents IPC handlers
-│   │   └── claudemd.ts   # CLAUDE.md IPC handlers
+│   │   ├── claudemd.ts   # CLAUDE.md IPC handlers
+│   │   ├── project.ts    # Project IPC handlers
+│   │   └── providers.ts  # AI Provider IPC handlers
 │   └── services/         # Backend services
 │       └── file-manager.ts  # File system operations
+├── server/               # Express API server (Web mode)
+│   └── index.ts          # REST API routes
 ├── src/                  # React frontend
 │   ├── App.tsx          # Main app component
 │   ├── main.tsx         # Entry point with i18n init
 │   ├── i18n/            # Internationalization
 │   │   ├── index.ts     # i18n configuration
-│   │   ├── config.ts    # Language settings
 │   │   └── locales/     # Translation files
 │   │       ├── en/      # English translations
-│   │       │   ├── common.json
-│   │       │   ├── layout.json
-│   │       │   └── dashboard.json
 │   │       └── zh/      # Chinese translations
-│   │           ├── common.json
-│   │           ├── layout.json
-│   │           └── dashboard.json
 │   ├── pages/           # Page components
 │   │   ├── Dashboard.tsx   # Dashboard overview
 │   │   ├── Skills.tsx      # Skills browser
@@ -47,6 +61,7 @@ claude-code-debugger/
 │   │   ├── Commands.tsx    # Slash commands editor
 │   │   ├── ClaudeMd.tsx    # CLAUDE.md file manager
 │   │   ├── Graph.tsx       # Dependency graph
+│   │   ├── Models.tsx      # AI Model providers
 │   │   └── Settings.tsx    # Settings page
 │   ├── components/      # Reusable UI components
 │   │   ├── layout/
@@ -56,12 +71,13 @@ claude-code-debugger/
 │   ├── stores/          # State management
 │   │   └── languageStore.ts  # Language state (Zustand)
 │   └── lib/            # Utilities and API client
-│       ├── api.ts      # Frontend API wrapper
+│       ├── api.ts      # Unified API (Electron IPC / HTTP)
 │       └── utils.ts    # Utility functions
 ├── shared/              # Shared TypeScript types
 │   └── types/          # Type definitions
+├── vite.config.ts       # Vite config (Electron mode)
+├── vite.config.web.ts   # Vite config (Web mode)
 └── dist-electron/       # Built electron files
-
 ```
 
 ## File Structure
@@ -69,15 +85,18 @@ claude-code-debugger/
 - `electron/` - Main process code that runs in Node.js context
   - `main.ts` - Creates browser window, manages app lifecycle
   - `preload.cjs` - Exposes safe IPC APIs to renderer via contextBridge
-  - `ipc.ts` - Registers all IPC handlers for frontend communication
+  - `ipc/` - Modular IPC handlers for frontend communication
   - `services/file-manager.ts` - Handles reading/writing skills, agents, etc.
+
+- `server/` - Express API server for Web mode
+  - `index.ts` - REST API routes that mirror Electron IPC functionality
 
 - `src/` - Renderer process code that runs in browser context
   - `pages/` - Full-page components for each section
   - `components/` - Reusable UI components (buttons, lists, forms)
-  - `lib/api.ts` - Frontend API client that wraps electronAPI calls
+  - `lib/api.ts` - Unified API client (auto-detects Electron vs Web mode)
 
-- `shared/types/` - TypeScript interfaces shared between main and renderer
+- `shared/types/` - TypeScript interfaces shared between main, server, and renderer
 
 ## Setup & Installation
 
@@ -103,40 +122,77 @@ npm run electron:dev
 
 ### Development
 
-The app runs in development mode with hot reload:
+Choose your preferred mode:
 
 ```bash
+# Desktop mode (Electron + Vite hot reload)
 npm run electron:dev
+
+# Web mode (Express API + Vite)
+npm run web:dev
 ```
 
-This starts:
+**Desktop Mode** starts:
 1. Vite dev server on http://localhost:5173
 2. Electron app that loads the dev server
+
+**Web Mode** starts:
+1. Express API server on http://localhost:3001
+2. Vite dev server on http://localhost:5173 with API proxy
 
 ### Build
 
 ```bash
-# Build for production
-npm run build
-
-# Build electron binaries
+# Build Desktop app for production
 npm run electron:build
+
+# Build Web app for production
+npm run web:build
 ```
 
 ## Architecture
 
-### IPC Communication
+### Electron Mode (Desktop)
 
 The app uses Electron's IPC (Inter-Process Communication) for frontend-backend communication:
 
 ```
 Frontend (React)
-    ↓ electronAPI.getSkills()
+    ↓ window.electronAPI.getSkills()
 Preload Script (contextBridge)
     ↓ ipcRenderer.invoke('skills:getAll')
 Main Process (IPC Handlers)
     ↓ FileManager.getSkills()
 File System (~/.claude/)
+```
+
+### Web Mode (Browser)
+
+In web mode, the app uses HTTP REST API instead of IPC:
+
+```
+Frontend (React)
+    ↓ fetch('/api/skills')
+Express API Server (port 3001)
+    ↓ FileManager.getSkills()
+File System (~/.claude/)
+```
+
+### Unified API Client
+
+The `src/lib/api.ts` automatically detects the running environment and uses the appropriate backend:
+
+```typescript
+import { api } from '@/lib/api'
+
+// Works in both Electron and Web modes
+const skills = await api.skills.getAll()
+const hooks = await api.hooks.getAll()
+
+// Check current mode
+if (api.isElectron()) {
+  // Electron-only features
+}
 ```
 
 ### Security Model
@@ -160,6 +216,7 @@ Manages all file operations for Claude Code components:
 
 ### Core
 - **Electron** - Desktop application framework
+- **Express.js** - Web API server (for web mode)
 - **React 18** - UI framework
 - **TypeScript** - Type safety
 - **Vite** - Build tool and dev server
@@ -283,21 +340,37 @@ try {
 }
 ```
 
+## npm Scripts
+
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start Vite dev server only |
+| `npm run electron:dev` | Start Electron desktop app with hot reload |
+| `npm run electron:build` | Build Electron app for distribution |
+| `npm run web:dev` | Start Web mode (Express API + Vite frontend) |
+| `npm run web:build` | Build Web frontend for production |
+| `npm run server` | Start Express API server only |
+| `npm run build` | Build for production |
+| `npm run lint` | Run ESLint |
+
 ## Common Commands
 
 ```bash
-# Development
-npm run electron:dev          # Start dev server with hot reload
+# Desktop Development
+npm run electron:dev          # Start Electron with hot reload
+
+# Web Development
+npm run web:dev               # Start Express + Vite for browser access
 
 # Build
-npm run build                 # Build renderer (React app)
-npm run electron:build        # Build electron app
+npm run electron:build        # Build Electron app
+npm run web:build             # Build Web frontend
 
 # Debugging
 npm run electron:dev 2>&1 | tee /tmp/electron.log  # Log all output
 
 # Clean
-rm -rf dist-electron dist node_modules/.vite       # Clean build artifacts
+rm -rf dist-electron dist dist-web node_modules/.vite  # Clean build artifacts
 ```
 
 ## Core Principles
@@ -312,29 +385,39 @@ rm -rf dist-electron dist node_modules/.vite       # Clean build artifacts
 
 ### ✅ Implemented Features
 
+- **Dual-Mode Support** - Run as Electron desktop app OR web browser app
 - **Multi-language Support** - English and Chinese with seamless switching
 - **Dashboard** - Overview of all Claude Code components
 - **CLAUDE.md Manager** - Browse and edit CLAUDE.md files across projects
-- **Skills Browser** - View and manage Claude Code skills
-- **Commands Manager** - Manage slash commands
+- **Skills Browser** - View and manage Claude Code skills with upload support
+- **Commands Manager** - Manage slash commands with syntax highlighting
 - **MCP Servers** - Configure and manage MCP servers
-- **Hooks Manager** - Configure and test hooks
-- **Dependency Graph** - Visualize component relationships
+- **Hooks Manager** - Configure and test hooks with real-time execution logs
+- **AI Model Providers** - Manage AI model providers and subscriptions
+- **Dependency Graph** - Visualize component dependencies with React Flow
 - **Settings** - Application configuration
 - **Language Switcher** - Easy language selection in sidebar
 
-### 🔧 Recent Fixes
+### 🔧 Recent Updates
+
+- **Dual-Mode Architecture** - Added web mode with Express.js API server
+  - Unified API client auto-detects Electron vs Web environment
+  - Shared FileManager service for both modes
+  - REST API endpoints mirror Electron IPC functionality
+
+- **AI Model Providers** - New Models page for managing AI providers
+  - Support for multiple AI providers (OpenAI, Anthropic, etc.)
+  - Subscription mode management
+  - Provider switching functionality
 
 - **Graph.tsx Null Safety** - Fixed node data structure inconsistency
   - Updated node type definitions to use nested `data` structure
   - Added defensive checks for undefined node.data access
-  - Resolved "Cannot read properties of undefined (reading 'label')" error
 
 - **Internationalization (i18n)** - Complete Chinese and English support
   - Automatic language detection from browser/localStorage
   - Persistent language selection
   - Seamless language switching without page reload
-  - TypeScript support for translation keys
 
 ## Internationalization (i18n)
 
@@ -421,6 +504,24 @@ Example translation file:
 }
 ```
 
+## API Endpoints (Web Mode)
+
+The Express API server provides RESTful endpoints that mirror Electron IPC:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/health` | Health check |
+| `GET /api/skills` | List all skills |
+| `GET /api/hooks` | List all hooks |
+| `GET /api/commands` | List all commands |
+| `GET /api/mcp` | List MCP servers |
+| `GET /api/claudemd/all` | List all CLAUDE.md files |
+| `GET /api/project/context` | Get project context |
+| `GET /api/providers` | List AI providers |
+| `POST /api/providers` | Add new provider |
+| `PUT /api/providers/:id` | Update provider |
+| `DELETE /api/providers/:id` | Delete provider |
+
 ## Roadmap
 
 ### High Priority
@@ -433,9 +534,18 @@ Example translation file:
 - [ ] Agents page full implementation
 - [ ] Testing and debugging tools integration
 - [ ] Performance optimization and caching
+- [ ] Docker deployment for web mode
 
 ### Low Priority
 - [ ] Dark/Light theme support
 - [ ] Keyboard shortcuts
 - [ ] Configuration backup and restore
 - [ ] Plugin system for extensions
+
+### ✅ Completed
+- [x] Dual-mode architecture (Electron + Web)
+- [x] Express.js API server for web mode
+- [x] Unified API client with environment detection
+- [x] AI Model Providers management
+- [x] Skills upload functionality
+- [x] i18n for Models page
