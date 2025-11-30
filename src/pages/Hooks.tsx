@@ -1488,21 +1488,29 @@ export default function Hooks() {
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             {saveSuccess && (
-              <span className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1 mr-auto">
-                <Check className="h-4 w-4" />
-                {t('saveSuccess')}
-              </span>
+              <div className="flex flex-col gap-1 mr-auto text-left">
+                <span className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1">
+                  <Check className="h-4 w-4" />
+                  {t('saveSuccess')}
+                </span>
+                <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  {t('saveSuccessRestartHint')}
+                </span>
+              </div>
             )}
-            <Button variant="outline" onClick={handleCancelEdit}>
-              <X className="h-4 w-4 mr-1" />
-              {t('dialog.cancel')}
-            </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              <Save className="h-4 w-4 mr-1" />
-              {saving ? t('dialog.saving') : t('dialog.save')}
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={handleCancelEdit}>
+                <X className="h-4 w-4 mr-1" />
+                {t('dialog.cancel')}
+              </Button>
+              <Button onClick={handleSave} disabled={saving}>
+                <Save className="h-4 w-4 mr-1" />
+                {saving ? t('dialog.saving') : t('dialog.save')}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

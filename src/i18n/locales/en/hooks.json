@@ -190,6 +190,7 @@
     "fixErrors": "Please fix the following errors:"
   },
   "saveSuccess": "Hook saved successfully",
+  "saveSuccessRestartHint": "Please restart Claude Code session to apply the new hooks configuration.",
   "howToCreate": {
     "title": "How to Create Your Own Hook",
     "step1": "Configure hooks via /hooks in Claude Code or edit ~/.claude/settings.json",

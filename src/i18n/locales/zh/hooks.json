@@ -190,6 +190,7 @@
     "fixErrors": "请修复以下错误："
   },
   "saveSuccess": "钩子保存成功",
+  "saveSuccessRestartHint": "请重启 Claude Code 会话以使新的钩子配置生效。",
   "howToCreate": {
     "title": "如何创建自己的钩子",
     "step1": "在 Claude Code 中通过 /hooks 配置，或编辑 ~/.claude/settings.json",
