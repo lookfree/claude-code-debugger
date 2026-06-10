@@ -10,6 +10,7 @@ use crate::pty::SessionRegistry;
 use crate::commands::model_switcher::commands::DbState;
 use crate::commands::model_switcher::presets::seed_presets;
 use crate::db::open as db_open;
+use crate::commands::claude_code::watcher::{FileWatcher, WatcherState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -28,6 +29,24 @@ pub fn run() {
 
             // 初始化系统托盘
             tray::setup_tray(app)?;
+
+            // 注册 WatcherState（初始为 None）
+            app.manage(WatcherState(Mutex::new(None)));
+
+            // 初始化文件监听（监听 ~/.claude 的各子目录）
+            let watch_dirs = {
+                let mut dirs_to_watch = vec![];
+                if let Some(home) = dirs::home_dir() {
+                    let claude_dir = home.join(".claude");
+                    for sub in &["skills", "agents", "commands", "hooks"] {
+                        dirs_to_watch.push(claude_dir.join(sub));
+                    }
+                }
+                dirs_to_watch
+            };
+            if let Ok(fw) = FileWatcher::start(app.handle().clone(), watch_dirs) {
+                *app.state::<WatcherState>().0.lock().unwrap() = Some(fw);
+            }
 
             Ok(())
         })
