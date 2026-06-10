@@ -164,6 +164,16 @@ export interface RunningTool {
   working_dir: string | null
 }
 
+export interface CodexStatus {
+  installed: boolean
+  path: string | null
+  version: string | null
+  config_exists: boolean
+  config_path: string
+  current_model: string | null
+  current_provider: string | null
+}
+
 // ── IPC channel → Tauri command mapping ──────────────────────────────────────
 // Note: JS camelCase arg keys map to Rust snake_case param names via Tauri v2
 // Rust structs serialise with snake_case field names (serde default)
@@ -297,5 +307,11 @@ export const api = {
     getDashboard:  ()                    => inv<DashboardSummary>('get_dashboard'),
     getDailyUsage: (days: number)        => inv<DailyUsage[]>('get_daily_usage', { days }),
     getRunningTools: ()                  => inv<RunningTool[]>('get_running_tools'),
+  },
+
+  codex: {
+    getStatus: () => inv<CodexStatus>('codex_get_status'),
+    readConfig: () => inv<string>('codex_read_config'),
+    writeConfig: (content: string) => inv<void>('codex_write_config', { content }),
   },
 }
