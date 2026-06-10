@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
@@ -8,16 +8,26 @@ import "@xterm/xterm/css/xterm.css";
 interface TerminalTabProps {
   sessionId: string;
   active: boolean;
+  /** Called when the PTY process exits. */
+  onExited?: () => void;
 }
 
 export default function TerminalTab({
   sessionId,
   active,
+  onExited,
 }: TerminalTabProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const [_exited, setExited] = useState(false);
+  // Keep a ref so the ResizeObserver closure always sees the current value
+  // (fixes the stale closure bug — Finding 4).
+  const activeRef = useRef(active);
+
+  // Keep activeRef in sync with the active prop.
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -49,25 +59,35 @@ export default function TerminalTab({
       invoke("pty_write", { sessionId, data }).catch(() => {});
     });
 
-    // Listen for pty output events
+    // Listen for pty output events then call pty_replay to drain the
+    // pre-live buffer and mark the session live (Finding 5).
     let unlistenOutput: UnlistenFn | null = null;
     let unlistenExit: UnlistenFn | null = null;
 
-    listen<string>(`pty:output:${sessionId}`, (event) => {
-      term.write(event.payload);
-    }).then((fn) => {
-      unlistenOutput = fn;
-    });
+    async function setupListeners() {
+      unlistenOutput = await listen<string>(`pty:output:${sessionId}`, (event) => {
+        term.write(event.payload);
+      });
 
-    listen(`pty:exit:${sessionId}`, () => {
-      setExited(true);
-    }).then((fn) => {
-      unlistenExit = fn;
-    });
+      unlistenExit = await listen(`pty:exit:${sessionId}`, () => {
+        onExited?.();
+      });
 
-    // ResizeObserver for terminal resize
+      // Both listeners are now registered — atomically flip live=true and
+      // drain any bytes that arrived before we were ready (Finding 5).
+      const backlog = await invoke<string>("pty_replay", { sessionId });
+      if (backlog) {
+        term.write(backlog);
+      }
+    }
+
+    setupListeners().catch(() => {});
+
+    // ResizeObserver for terminal resize.
+    // Uses activeRef (not the captured `active`) to avoid the stale closure
+    // bug (Finding 4).
     const observer = new ResizeObserver(() => {
-      if (containerRef.current && active) {
+      if (containerRef.current && activeRef.current) {
         fitAddon.fit();
         invoke("pty_resize", {
           sessionId,
@@ -92,7 +112,8 @@ export default function TerminalTab({
     };
   }, [sessionId]); // only re-init if sessionId changes
 
-  // Fit when becoming active
+  // Fit when becoming active (Finding 3: visibility is controlled by the
+  // outer div in Runner; no display toggle needed here).
   useEffect(() => {
     if (active && fitAddonRef.current && termRef.current) {
       setTimeout(() => {
@@ -106,13 +127,14 @@ export default function TerminalTab({
     }
   }, [active, sessionId]);
 
+  // Finding 3: no display:none/block here — visibility is handled by the
+  // wrapper div in Runner.tsx using visibility:hidden/visible.
   return (
     <div
       ref={containerRef}
       style={{
         width: "100%",
         height: "100%",
-        display: active ? "block" : "none",
         background: "#0f0f0f",
       }}
     />
@@ -185,4 +207,3 @@ export function TabHeader({
     </div>
   );
 }
-

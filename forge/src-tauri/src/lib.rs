@@ -9,6 +9,7 @@ use crate::pty::SessionRegistry;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(SessionRegistry::new())
         .invoke_handler(tauri::generate_handler![
             commands::tools::detect_tools,
@@ -17,6 +18,7 @@ pub fn run() {
             commands::runner::pty_resize,
             commands::runner::pty_kill,
             commands::runner::pty_list,
+            commands::runner::pty_replay,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

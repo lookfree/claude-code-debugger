@@ -122,6 +122,15 @@ export default function Runner() {
                 <TerminalTab
                   sessionId={tab.sessionId}
                   active={i === activeIdx}
+                  onExited={() => {
+                    setTabs((prev) =>
+                      prev.map((t) =>
+                        t.sessionId === tab.sessionId
+                          ? { ...t, exited: true }
+                          : t
+                      )
+                    );
+                  }}
                 />
               </div>
             ))}

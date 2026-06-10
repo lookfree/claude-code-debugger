@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 
 const TOOLS = [
   { id: "claude-code", label: "Claude Code" },
@@ -47,6 +48,14 @@ export default function LaunchBar({ onLaunch }: LaunchBarProps) {
     setDir(r);
     setShowRecents(false);
     dirInputRef.current?.focus();
+  }
+
+  async function handleBrowse() {
+    const selected = await open({ directory: true, multiple: false });
+    if (selected) {
+      setDir(selected as string);
+      dirInputRef.current?.focus();
+    }
   }
 
   return (
@@ -144,6 +153,24 @@ export default function LaunchBar({ onLaunch }: LaunchBarProps) {
           </div>
         )}
       </div>
+
+      {/* Browse button */}
+      <button
+        onClick={handleBrowse}
+        title="Browse for directory"
+        style={{
+          background: "#1c1c1c",
+          color: "#a3a3a3",
+          border: "1px solid #3b3b3b",
+          borderRadius: 6,
+          padding: "5px 10px",
+          fontSize: 13,
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+        }}
+      >
+        浏览…
+      </button>
 
       {/* Launch button */}
       <button

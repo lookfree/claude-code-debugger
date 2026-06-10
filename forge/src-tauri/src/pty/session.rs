@@ -1,7 +1,11 @@
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+
+/// Maximum bytes retained in the pre-live output buffer (256 KB).
+const BUFFER_CAP: usize = 256 * 1024;
 
 /// A single PTY session: owns the master pty, child process, and writer.
 pub struct PtySession {
@@ -11,6 +15,11 @@ pub struct PtySession {
     master: Arc<Mutex<Box<dyn portable_pty::MasterPty + Send>>>,
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
     killer: Arc<Mutex<Box<dyn portable_pty::ChildKiller + Send + Sync>>>,
+    /// Set to true once the frontend is ready to receive events.
+    live: Arc<AtomicBool>,
+    /// Bytes buffered while live==false, guarded by the same Mutex used in
+    /// the reader thread so that the live→drain transition is atomic.
+    buffer: Arc<Mutex<Vec<u8>>>,
 }
 
 impl PtySession {
@@ -19,6 +28,10 @@ impl PtySession {
     /// `on_output` is called from a reader thread with each chunk of bytes
     /// read from the pty master. `on_exit` is called once the reader thread
     /// exits (child process exited or pty closed).
+    ///
+    /// Output is buffered internally until `replay()` is called, at which
+    /// point the buffer is drained and returned, and all subsequent output
+    /// flows directly through `on_output`.
     pub fn spawn(
         id: &str,
         tool: &str,
@@ -64,13 +77,42 @@ impl PtySession {
             .try_clone_reader()
             .map_err(|e| format!("try_clone_reader failed: {e}"))?;
 
-        // Reader thread: read 4KB chunks, call on_output, exit on Ok(0)/Err
+        let live = Arc::new(AtomicBool::new(false));
+        let buffer: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let live_thread = Arc::clone(&live);
+        let buffer_thread = Arc::clone(&buffer);
+
+        // Reader thread: read 4KB chunks.
+        // While live==false, bytes are appended to the buffer.
+        // Once live==true, bytes are forwarded through on_output.
+        // The check+action is done under the buffer Mutex so that the
+        // replay() transition (lock buffer → set live → drain) is atomic.
         std::thread::spawn(move || {
             let mut buf = vec![0u8; 4096];
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) | Err(_) => break,
-                    Ok(n) => on_output(buf[..n].to_vec()),
+                    Ok(n) => {
+                        let chunk = buf[..n].to_vec();
+                        // Lock buffer to make the live check + action atomic
+                        // with respect to replay().
+                        let mut guard = buffer_thread.lock().unwrap();
+                        if live_thread.load(Ordering::Acquire) {
+                            // Already live — drop the lock before calling
+                            // the potentially-blocking on_output callback.
+                            drop(guard);
+                            on_output(chunk);
+                        } else {
+                            // Not yet live — append to buffer (cap at 256 KB).
+                            if guard.len() + chunk.len() > BUFFER_CAP {
+                                // Drop oldest bytes to make room.
+                                let excess = guard.len() + chunk.len() - BUFFER_CAP;
+                                guard.drain(..excess);
+                            }
+                            guard.extend_from_slice(&chunk);
+                        }
+                    }
                 }
             }
             on_exit();
@@ -83,7 +125,23 @@ impl PtySession {
             master: Arc::new(Mutex::new(pair.master)),
             writer: Arc::new(Mutex::new(writer)),
             killer: Arc::new(Mutex::new(killer)),
+            live,
+            buffer,
         })
+    }
+
+    /// Mark the session as live, drain and return the pre-live buffer as a
+    /// UTF-8-lossy string, and clear the buffer.
+    ///
+    /// Subsequent output flows directly through the `on_output` callback.
+    /// This operation is atomic with respect to the reader thread's live check.
+    pub fn replay(&self) -> String {
+        let mut guard = self.buffer.lock().unwrap();
+        // Set live under the buffer lock so the reader thread cannot sneak in
+        // a buffer append between the drain and the live flag flip.
+        self.live.store(true, Ordering::Release);
+        let bytes = std::mem::take(&mut *guard);
+        String::from_utf8_lossy(&bytes).into_owned()
     }
 
     /// Write data to the pty stdin.
@@ -154,6 +212,9 @@ mod tests {
         )
         .expect("spawn should succeed");
 
+        // Mark live so output flows through on_output
+        session.replay();
+
         // Write the echo command
         session
             .write(b"echo forge-pty-test\r")
@@ -200,5 +261,59 @@ mod tests {
 
         // Kill should not panic
         session.kill().expect("kill should succeed");
+    }
+
+    #[test]
+    fn test_replay_captures_early_output() {
+        // Spawn a short-lived process, wait for output to land in buffer
+        // (live==false), then call replay() and assert the output is returned.
+        let working_dir = std::env::temp_dir().to_string_lossy().to_string();
+
+        // Collect any post-replay output separately
+        let post_replay: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+        let exited: Arc<(Mutex<bool>, Condvar)> = Arc::new((Mutex::new(false), Condvar::new()));
+
+        let post_clone = Arc::clone(&post_replay);
+        let exited_clone = Arc::clone(&exited);
+
+        let session = PtySession::spawn(
+            "test-replay",
+            "test-tool",
+            "sh",
+            &working_dir,
+            vec![],
+            move |bytes| {
+                post_clone.lock().unwrap().extend_from_slice(&bytes);
+            },
+            move || {
+                let (lock, cvar) = &*exited_clone;
+                *lock.lock().unwrap() = true;
+                cvar.notify_all();
+            },
+        )
+        .expect("spawn should succeed");
+
+        // Write the command immediately (output will be buffered, live==false)
+        session
+            .write(b"echo early-bytes\r")
+            .expect("write should succeed");
+
+        // Sleep ~300 ms to let the output land in the buffer
+        std::thread::sleep(Duration::from_millis(300));
+
+        // replay() should return the buffered bytes and flip live=true
+        let backlog = session.replay();
+        assert!(
+            backlog.contains("early-bytes"),
+            "expected 'early-bytes' in replay backlog, got: {backlog:?}"
+        );
+
+        // Now exit and wait — any remaining output flows via on_output
+        session.write(b"exit\r").expect("write exit should succeed");
+
+        let (lock, cvar) = &*exited;
+        let _ = cvar
+            .wait_timeout_while(lock.lock().unwrap(), Duration::from_secs(5), |done| !*done)
+            .unwrap();
     }
 }

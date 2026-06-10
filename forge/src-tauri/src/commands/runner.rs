@@ -109,3 +109,14 @@ pub fn pty_list(registry: State<'_, SessionRegistry>) -> Vec<RunningSession> {
         })
         .collect()
 }
+
+/// Atomically mark a session as live and return any output buffered before
+/// the frontend listener was ready.  The returned string is UTF-8 lossy.
+/// Should be called after both pty:output and pty:exit listeners are registered.
+#[tauri::command]
+pub fn pty_replay(
+    session_id: String,
+    registry: State<'_, SessionRegistry>,
+) -> Result<String, String> {
+    registry.with(&session_id, |s| Ok(s.replay()))
+}
