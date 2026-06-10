@@ -129,6 +129,15 @@ pub fn run() {
             commands::claude_code::environment::cmd_set_env_var,
             commands::claude_code::environment::cmd_delete_env_var,
             commands::claude_code::environment::cmd_test_api_connection,
+            // M5 Usage
+            commands::usage::sync::usage_sync,
+            commands::usage::query::get_sessions,
+            commands::usage::query::get_projects,
+            commands::usage::query::pin_project,
+            commands::usage::query::unpin_project,
+            commands::usage::query::get_dashboard,
+            commands::usage::query::get_daily_usage,
+            commands::usage::status::get_running_tools,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

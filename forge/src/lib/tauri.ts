@@ -117,6 +117,53 @@ export interface EnvVar {
   value: string
 }
 
+// Usage types
+export interface SessionRow {
+  id: string
+  tool: string
+  working_dir: string
+  started_at: number | null
+  ended_at: number | null
+  duration_sec: number | null
+  model: string | null
+  input_tokens: number
+  output_tokens: number
+  cost_usd: number
+}
+
+export interface ProjectRow {
+  id: string
+  tool: string
+  directory: string
+  pinned: boolean
+  last_used_at: number | null
+  session_count: number
+  total_tokens: number
+  total_cost_usd: number
+}
+
+export interface DashboardSummary {
+  today_input_tokens: number
+  today_output_tokens: number
+  today_cost_usd: number
+  claude_today_tokens: number
+  codex_today_tokens: number
+  recent_sessions: SessionRow[]
+}
+
+export interface DailyUsage {
+  date: string           // "YYYY-MM-DD"
+  claude_tokens: number
+  codex_tokens: number
+  total_cost_usd: number
+}
+
+export interface RunningTool {
+  tool: string
+  pid: number
+  working_dir: string | null
+}
+
 // ── IPC channel → Tauri command mapping ──────────────────────────────────────
 // Note: JS camelCase arg keys map to Rust snake_case param names via Tauri v2
 // Rust structs serialise with snake_case field names (serde default)
@@ -224,5 +271,16 @@ export const api = {
     setEnvVar: (key: string, value: string) => inv<void>('cmd_set_env_var', { key, value }),
     deleteEnvVar: (key: string) => inv<void>('cmd_delete_env_var', { key }),
     testApiConnection: () => inv<boolean>('cmd_test_api_connection'),
+  },
+
+  usage: {
+    sync:          ()                    => inv<number>('usage_sync'),
+    getSessions:   (tool: string, limit?: number, offset?: number) => inv<SessionRow[]>('get_sessions', { tool, limit, offset }),
+    getProjects:   (tool: string)        => inv<ProjectRow[]>('get_projects', { tool }),
+    pinProject:    (tool: string, directory: string) => inv<void>('pin_project', { tool, directory }),
+    unpinProject:  (tool: string, directory: string) => inv<void>('unpin_project', { tool, directory }),
+    getDashboard:  ()                    => inv<DashboardSummary>('get_dashboard'),
+    getDailyUsage: (days: number)        => inv<DailyUsage[]>('get_daily_usage', { days }),
+    getRunningTools: ()                  => inv<RunningTool[]>('get_running_tools'),
   },
 }
