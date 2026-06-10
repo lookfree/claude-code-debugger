@@ -1,4 +1,6 @@
 pub mod providers;
+pub mod sessions;
+pub mod projects;
 
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};

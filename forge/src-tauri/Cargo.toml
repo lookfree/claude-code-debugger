@@ -33,6 +33,7 @@ notify = { version = "8", default-features = false, features = ["macos_fsevent"]
 git2 = { version = "0.20", default-features = false, features = ["ssh"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 tokio = { version = "1", features = ["rt", "macros"] }
+sysinfo = "0.33"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
