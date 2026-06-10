@@ -169,6 +169,21 @@ export interface RunningTool {
 // Rust structs serialise with snake_case field names (serde default)
 
 export const api = {
+  runner: {
+    create: (tool: string, workingDir: string, extraArgs?: string[]) =>
+      inv<string>('pty_create', { tool, workingDir, extraArgs }),
+    write: (sessionId: string, data: string) =>
+      inv<void>('pty_write', { sessionId, data }),
+    resize: (sessionId: string, cols: number, rows: number) =>
+      inv<void>('pty_resize', { sessionId, cols, rows }),
+    kill: (sessionId: string) =>
+      inv<void>('pty_kill', { sessionId }),
+    list: () =>
+      inv<{ id: string; tool: string; working_dir: string }[]>('pty_list'),
+    replay: (sessionId: string) =>
+      inv<string>('pty_replay', { sessionId }),
+  },
+
   skills: {
     getAll: () => inv<Skill[]>('cmd_get_skills'),
     get: (name: string) => inv<Skill | null>('cmd_get_skill', { name }),
