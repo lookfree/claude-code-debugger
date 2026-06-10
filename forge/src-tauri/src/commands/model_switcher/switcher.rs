@@ -205,6 +205,28 @@ mod tests {
     }
 
     #[test]
+    fn switch_returns_error_when_target_path_is_directory() {
+        // If the config path is a directory (not a file), the write must fail and
+        // success must be false — so the caller (switch_provider command) must NOT
+        // update active_providers for that tool.
+        let dir = tempfile::tempdir().unwrap();
+        // Use the directory itself as the "file" path — writing to a directory fails.
+        let bad_path = dir.path().to_path_buf();
+
+        let results = switch_provider_with_paths(
+            Some(&bad_path),
+            None,
+            Some(r#"{"model":"claude-opus-4"}"#),
+            None,
+            &target("claude-code"),
+        );
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success, "write to a directory must fail");
+        assert!(results[0].error.is_some(), "error message must be present");
+    }
+
+    #[test]
     fn switch_preserves_existing_unknown_fields() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("claude.json");

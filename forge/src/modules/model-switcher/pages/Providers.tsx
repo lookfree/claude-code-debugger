@@ -121,6 +121,9 @@ export default function Providers() {
   const [form, setForm] = useState<AddFormState>(emptyForm());
   const [switching, setSwitching] = useState<string | null>(null);
   const [activeMap, setActiveMap] = useState<Record<string, string>>({});
+  const [showJsonImport, setShowJsonImport] = useState(false);
+  const [jsonText, setJsonText] = useState("");
+  const [jsonError, setJsonError] = useState<string | null>(null);
 
   const load = () => {
     invoke<Provider[]>("get_providers").then(setProviders).catch(console.error);
@@ -181,6 +184,51 @@ export default function Providers() {
     }
   };
 
+  const handleJsonImport = async () => {
+    setJsonError(null);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      setJsonError("JSON 格式无效，请检查后重试");
+      return;
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      setJsonError("顶层必须是 JSON 对象");
+      return;
+    }
+    const obj = parsed as Record<string, unknown>;
+    if (!obj.name || typeof obj.name !== "string" || !obj.name.trim()) {
+      setJsonError('缺少必填字段 "name"');
+      return;
+    }
+    const claudeCodeConfig = obj.claude_code_config
+      ? (typeof obj.claude_code_config === "string"
+          ? obj.claude_code_config
+          : JSON.stringify(obj.claude_code_config))
+      : null;
+    const codexCliConfig = obj.codex_cli_config
+      ? (typeof obj.codex_cli_config === "string"
+          ? obj.codex_cli_config
+          : JSON.stringify(obj.codex_cli_config))
+      : null;
+    try {
+      await invoke("add_provider", {
+        id: crypto.randomUUID(),
+        name: obj.name.trim(),
+        claudeCodeConfig: claudeCodeConfig,
+        codexCliConfig: codexCliConfig,
+      });
+      setShowJsonImport(false);
+      setJsonText("");
+      setJsonError(null);
+      setBanner({ ok: true, msg: `Provider "${obj.name.trim()}" 导入成功` });
+      load();
+    } catch (e) {
+      setJsonError(String(e));
+    }
+  };
+
   const userProviders = providers.filter(p => !p.is_preset);
 
   return (
@@ -190,9 +238,45 @@ export default function Providers() {
         <button style={S.btn(true)} onClick={() => setShowAdd(s => !s)}>
           {showAdd ? "取消" : "+ 添加 Provider"}
         </button>
+        <button
+          style={S.btn()}
+          onClick={() => { setShowJsonImport(s => !s); setJsonError(null); }}
+        >
+          {showJsonImport ? "取消导入" : "JSON 导入"}
+        </button>
       </div>
 
       {banner && <div style={S.banner(banner.ok)}>{banner.msg}</div>}
+
+      {showJsonImport && (
+        <div style={{
+          background: "#141414",
+          border: "1px solid #374151",
+          borderRadius: 8,
+          padding: 16,
+          marginBottom: 20,
+        }}>
+          <div style={{ fontSize: 13, color: "#e5e5e5", fontWeight: 600, marginBottom: 8 }}>
+            JSON 粘贴导入
+          </div>
+          <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>
+            粘贴完整的 Provider JSON，例如：
+            <span style={{ display: "block", fontFamily: "monospace", color: "#a3a3a3", marginTop: 4 }}>
+              {'{ "name": "My Provider", "claude_code_config": { "model": "..." }, "codex_cli_config": { "model": "...", "provider": "..." } }'}
+            </span>
+          </div>
+          <textarea
+            style={{ ...S.textarea, height: 120, marginBottom: 8 }}
+            value={jsonText}
+            onChange={e => { setJsonText(e.target.value); setJsonError(null); }}
+            placeholder='{ "name": "My Provider", "claude_code_config": { "model": "claude-sonnet-4-5" } }'
+          />
+          {jsonError && (
+            <div style={{ ...S.banner(false), marginBottom: 8 }}>{jsonError}</div>
+          )}
+          <button style={S.btn(true)} onClick={handleJsonImport}>导入</button>
+        </div>
+      )}
 
       {showAdd && (
         <div style={{

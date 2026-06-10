@@ -94,11 +94,6 @@ pub fn switch_provider(
     let provider = providers::get_provider(&conn, &provider_id)?
         .ok_or_else(|| format!("provider '{}' not found", provider_id))?;
 
-    // 设置激活 provider
-    for tool in &targets {
-        providers::set_active_provider(&conn, tool, &provider_id)?;
-    }
-
     // 获取默认配置文件路径
     let claude_path = claude::default_path();
     let codex_path = codex::default_path();
@@ -110,6 +105,13 @@ pub fn switch_provider(
         provider.codex_cli_config.as_deref(),
         &targets,
     );
+
+    // 只有文件写入成功时才更新激活状态，避免 DB 与磁盘不一致
+    for r in &results {
+        if r.success {
+            providers::set_active_provider(&conn, &r.tool, &provider_id)?;
+        }
+    }
 
     Ok(results)
 }

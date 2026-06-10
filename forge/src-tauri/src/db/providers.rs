@@ -111,6 +111,9 @@ pub fn delete_provider(conn: &Connection, id: &str) -> Result<(), String> {
     if is_preset {
         return Err(format!("cannot delete preset provider '{}'", id));
     }
+    // 先清理孤立的 active_providers 记录，再删除 provider（FK 约束要求顺序）
+    conn.execute("DELETE FROM active_providers WHERE provider_id=?1", [id])
+        .map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM providers WHERE id=?1", [id])
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -203,6 +206,20 @@ mod tests {
         let err = delete_provider(&conn, "preset1");
         assert!(err.is_err());
         assert!(err.unwrap_err().contains("preset"));
+    }
+
+    #[test]
+    fn delete_clears_active_providers() {
+        let conn = mem();
+        insert_provider(&conn, &fixture("p1", "X", false)).unwrap();
+        set_active_provider(&conn, "claude-code", "p1").unwrap();
+        // Confirm it's active before deletion
+        assert_eq!(get_active_provider(&conn, "claude-code").unwrap().as_deref(), Some("p1"));
+        // Delete the provider
+        delete_provider(&conn, "p1").unwrap();
+        // active_providers row must also be gone
+        assert!(get_active_provider(&conn, "claude-code").unwrap().is_none(),
+            "active_providers should not retain a deleted provider");
     }
 
     #[test]
