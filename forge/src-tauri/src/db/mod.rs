@@ -40,6 +40,19 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
+/// Read all rows from the env_vars table.
+pub fn get_env_vars(conn: &Connection) -> Result<Vec<(String, String)>, String> {
+    let mut stmt = conn
+        .prepare("SELECT key, value FROM env_vars ORDER BY key")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,5 +88,27 @@ mod tests {
         let path = dir.path().join("nested/forge.db");
         let conn = open(&path).unwrap();
         assert!(table_exists(&conn, "providers"));
+    }
+
+    #[test]
+    fn get_env_vars_empty_and_insert() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+
+        // Initially empty
+        let vars = get_env_vars(&conn).unwrap();
+        assert!(vars.is_empty());
+
+        // Insert a row and read it back
+        conn.execute(
+            "INSERT INTO env_vars (key, value, created_at) VALUES (?1, ?2, 0)",
+            ["MY_KEY", "my_value"],
+        )
+        .unwrap();
+
+        let vars = get_env_vars(&conn).unwrap();
+        assert_eq!(vars.len(), 1);
+        assert_eq!(vars[0].0, "MY_KEY");
+        assert_eq!(vars[0].1, "my_value");
     }
 }
