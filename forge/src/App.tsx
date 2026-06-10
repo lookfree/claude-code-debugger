@@ -1,53 +1,40 @@
-import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useState } from "react";
+import Navigation from "./shell/Navigation";
+import Dashboard from "./modules/dashboard/pages/Dashboard";
+import Runner from "./modules/runner/pages/Runner";
 
-interface ToolStatus {
-  name: string;
-  installed: boolean;
-  path: string | null;
-  version: string | null;
+type PageId = "dashboard" | "runner";
+
+function renderPage(id: PageId) {
+  switch (id) {
+    case "dashboard":
+      return <Dashboard />;
+    case "runner":
+      return <Runner />;
+    default:
+      return <Dashboard />;
+  }
 }
 
 function App() {
-  const [tools, setTools] = useState<ToolStatus[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    invoke<ToolStatus[]>("detect_tools")
-      .then(setTools)
-      .catch((e) => setError(String(e)));
-  }, []);
+  const [page, setPage] = useState<PageId>("dashboard");
 
   return (
-    <main
+    <div
       style={{
+        display: "flex",
+        height: "100vh",
+        overflow: "hidden",
         background: "#0f0f0f",
         color: "#e5e5e5",
-        minHeight: "100vh",
-        padding: 24,
         fontFamily: "ui-sans-serif, system-ui, sans-serif",
       }}
     >
-      <h1 style={{ fontSize: 20, marginBottom: 16 }}>Forge — 环境检测</h1>
-      {error && <p style={{ color: "#ef4444" }}>{error}</p>}
-      <table style={{ borderCollapse: "collapse", width: "100%" }}>
-        <tbody>
-          {tools.map((t) => (
-            <tr key={t.name} style={{ borderBottom: "1px solid #262626" }}>
-              <td style={{ padding: "8px 12px" }}>
-                {t.installed ? "🟢" : "⚪️"} {t.name}
-              </td>
-              <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 12 }}>
-                {t.path ?? "未安装"}
-              </td>
-              <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 12 }}>
-                {t.version ?? "-"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </main>
+      <Navigation activeId={page} onNavigate={(id) => setPage(id as PageId)} />
+      <main style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column" }}>
+        {renderPage(page)}
+      </main>
+    </div>
   );
 }
 
