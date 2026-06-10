@@ -1,12 +1,15 @@
 interface NavItem {
   id: string;
   label: string;
+  isGroupHeader?: boolean;
 }
 
-// Adding a new module is one line here
 const NAV_ITEMS: NavItem[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "runner", label: "CLI Runner" },
+  { id: "_group_model_switcher", label: "Model Switcher", isGroupHeader: true },
+  { id: "providers", label: "Providers" },
+  { id: "presets", label: "Presets" },
 ];
 
 interface NavigationProps {
@@ -46,6 +49,23 @@ export default function Navigation({ activeId, onNavigate }: NavigationProps) {
 
       {/* Nav items */}
       {NAV_ITEMS.map((item) => {
+        if (item.isGroupHeader) {
+          return (
+            <div
+              key={item.id}
+              style={{
+                padding: "16px 20px 4px",
+                fontSize: 10,
+                fontWeight: 700,
+                color: "#4b5563",
+                textTransform: "uppercase",
+                letterSpacing: 1.5,
+              }}
+            >
+              {item.label}
+            </div>
+          );
+        }
         const isActive = item.id === activeId;
         return (
           <button
@@ -67,13 +87,11 @@ export default function Navigation({ activeId, onNavigate }: NavigationProps) {
             }}
             onMouseEnter={(e) => {
               if (!isActive)
-                (e.currentTarget as HTMLButtonElement).style.background =
-                  "#141414";
+                (e.currentTarget as HTMLButtonElement).style.background = "#141414";
             }}
             onMouseLeave={(e) => {
               if (!isActive)
-                (e.currentTarget as HTMLButtonElement).style.background =
-                  "transparent";
+                (e.currentTarget as HTMLButtonElement).style.background = "transparent";
             }}
           >
             {item.label}

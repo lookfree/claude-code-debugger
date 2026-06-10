@@ -2,8 +2,10 @@ import { useState } from "react";
 import Navigation from "./shell/Navigation";
 import Dashboard from "./modules/dashboard/pages/Dashboard";
 import Runner from "./modules/runner/pages/Runner";
+import Providers from "./modules/model-switcher/pages/Providers";
+import Presets from "./modules/model-switcher/pages/Presets";
 
-type PageId = "dashboard" | "runner";
+type PageId = "dashboard" | "runner" | "providers" | "presets";
 
 function renderPage(id: PageId) {
   switch (id) {
@@ -11,6 +13,10 @@ function renderPage(id: PageId) {
       return <Dashboard />;
     case "runner":
       return <Runner />;
+    case "providers":
+      return <Providers />;
+    case "presets":
+      return <Presets />;
     default:
       return <Dashboard />;
   }
