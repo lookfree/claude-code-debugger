@@ -38,6 +38,7 @@
     "react-dom": "^19.1.0",
     "react-i18next": "^17.0.8",
     "reactflow": "^11.11.4",
+    "recharts": "^3.8.1",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.0",
     "zustand": "^5.0.14"
