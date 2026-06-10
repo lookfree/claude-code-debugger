@@ -1522,7 +1522,7 @@ git commit -m "feat(m4): add notify file watcher with debounce, emits files:chan
 - Modify: `forge/src-tauri/src/lib.rs`（invoke_handler 注册所有 M4 命令）
 - Create: `forge/src/lib/tauri.ts`（invoke() 包装层）
 
-- [ ] **Step 1: 注册命令到 invoke_handler**
+- [x] **Step 1: 注册命令到 invoke_handler**
 
 在 `forge/src-tauri/src/lib.rs` 的 `invoke_handler` 中追加全部 M4 命令：
 
@@ -1561,7 +1561,7 @@ commands::claude_code::hooks::cmd_launch_debug_session,
 commands::claude_code::hooks::cmd_stop_debug_session,
 ```
 
-- [ ] **Step 2: 创建 forge/src/lib/tauri.ts**
+- [x] **Step 2: 创建 forge/src/lib/tauri.ts**
 
 新建 `forge/src/lib/tauri.ts`：
 
@@ -1802,7 +1802,7 @@ export const api = {
 }
 ```
 
-- [ ] **Step 3: 验证编译（Rust + 前端）**
+- [x] **Step 3: 验证编译（Rust + 前端）**
 
 ```bash
 cargo check --manifest-path forge/src-tauri/Cargo.toml 2>&1 | grep -v "^warning"
@@ -1831,7 +1831,7 @@ git commit -m "feat(m4): register all M4 Tauri commands + create tauri.ts IPC wr
 
 **迁移流程（对每个页面执行相同步骤）：**
 
-- [ ] **Step 1: 创建目录并复制文件**
+- [x] **Step 1: 创建目录并复制文件**
 
 ```bash
 mkdir -p forge/src/modules/claude-code/pages
@@ -1845,7 +1845,7 @@ cp src/pages/Skills.tsx \
    forge/src/modules/claude-code/pages/
 ```
 
-- [ ] **Step 2: 批量替换 API 调用**
+- [x] **Step 2: 批量替换 API 调用**
 
 对每个页面，将所有 `window.api.*` / `api.*` 调用替换为对应的 `api.*` 调用（从 `../../lib/tauri` 导入）。
 
@@ -1890,7 +1890,7 @@ import { api } from '../../lib/tauri'
 | `api.claudeMD.save(content, location)` | `api.claudeMD.save(filePath, content)` ← 参数顺序/名称变化 |
 | `api.graph.getDependencies()` / `api.dependencies.getGraph()` | `api.graph.getDependencies()` |
 
-- [ ] **Step 3: 移除 Electron-isms**
+- [x] **Step 3: 移除 Electron-isms**
 
 逐文件检查并删除/替换：
 - 删除所有 `import { ipcRenderer } from 'electron'`
@@ -1899,15 +1899,15 @@ import { api } from '../../lib/tauri'
 - 将 `react-router-dom` 的 `useNavigate`/`Link` 替换为 props 回调（页面接受 `onNavigate` prop）或直接删除不需要的路由跳转
 - 将 `import { useTranslation } from 'react-i18next'` 保留（i18n 已复制）
 
-- [ ] **Step 4: 修正 shadcn 组件导入路径**
+- [x] **Step 4: 修正 shadcn 组件导入路径**
 
 将所有 `@/components/ui/...` 改为相对路径，如 `../../../components/ui/button`。
 
-- [ ] **Step 5: 修正 shared/types 导入路径**
+- [x] **Step 5: 修正 shared/types 导入路径**
 
 将所有 `../../shared/types` 改为 `../../lib/types`（forge 内的新位置）。
 
-- [ ] **Step 6: 修复 Graph.tsx 中的 reactflow 依赖**
+- [x] **Step 6: 修复 Graph.tsx 中的 reactflow 依赖**
 
 Graph.tsx 中使用 ReactFlow，依赖已在 Task 2 安装，无需特殊处理；检查 `onFilesChanged` 事件监听：
 
@@ -1934,13 +1934,13 @@ useEffect(() => {
 
 对所有 7 个页面中使用了文件变更监听的地方统一替换。
 
-- [ ] **Step 7: 验证前端构建**
+- [x] **Step 7: 验证前端构建**
 
 ```bash
 cd forge && npm run build 2>&1 | grep -E "error|Error|✓" | head -30
 ```
 
-- [ ] **Step 8: 提交**
+- [x] **Step 8: 提交**
 
 ```bash
 git add forge/src/modules/claude-code/
@@ -1955,7 +1955,7 @@ git commit -m "feat(m4): migrate 7 debugger pages to forge (api→invoke, i18n, 
 - Modify: `forge/src/App.tsx`（新增 claude-code 页面导入 + renderPage case）
 - Modify: `forge/src/shell/Navigation.tsx`（新增 Claude Code 导航分组）
 
-- [ ] **Step 1: 修改 Navigation.tsx**
+- [x] **Step 1: 修改 Navigation.tsx**
 
 在 `NAV_ITEMS` 数组中，在 Model Switcher 分组之后追加 Claude Code 分组：
 
@@ -1973,7 +1973,7 @@ git commit -m "feat(m4): migrate 7 debugger pages to forge (api→invoke, i18n, 
 { id: "cc_environment", label: "Environment" },
 ```
 
-- [ ] **Step 2: 修改 App.tsx**
+- [x] **Step 2: 修改 App.tsx**
 
 新增导入和 renderPage case：
 
@@ -1992,7 +1992,7 @@ import Environment from "./modules/claude-code/pages/Environment";
 
 在 `type PageId` 联合类型中追加所有新 ID，在 `renderPage` 中追加对应 case。
 
-- [ ] **Step 3: 验证前端构建**
+- [x] **Step 3: 验证前端构建**
 
 ```bash
 cd forge && npm run build 2>&1 | tail -15
