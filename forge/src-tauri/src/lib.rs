@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod config;
 pub mod db;
+pub mod pathenv;
 pub mod pty;
 pub mod tray;
 
@@ -14,6 +15,8 @@ use crate::commands::claude_code::watcher::{FileWatcher, WatcherState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 必须最先执行：GUI 启动时 launchd PATH 不含用户目录，影响 which 检测与 PTY 启动
+    pathenv::fix_path();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

@@ -18,14 +18,81 @@ fn skills_dir(base_dir: &Path) -> PathBuf {
     base_dir.join("skills")
 }
 
-pub fn get_skills(base_dir: &Path) -> Result<Vec<Skill>, String> {
-    let dir = skills_dir(base_dir);
-    if !dir.exists() { return Ok(vec![]); }
+/// 解析单个 SKILL.md 为 Skill
+fn parse_skill_md(skill_md: &Path, location: &str) -> Result<Skill, String> {
+    let raw = fs::read_to_string(skill_md).map_err(|e| e.to_string())?;
+    let dir_name = skill_md
+        .parent()
+        .and_then(|p| p.file_name())
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    Ok(Skill {
+        name: extract_frontmatter_field(&raw, "name").unwrap_or(dir_name),
+        description: extract_frontmatter_field(&raw, "description").unwrap_or_default(),
+        content: Some(raw),
+        file_path: Some(skill_md.to_string_lossy().to_string()),
+        location: location.into(),
+        dependencies: None,
+    })
+}
+
+/// 插件技能：plugins/cache/<marketplace>/<plugin>/<version>/skills/<name>/SKILL.md
+fn get_plugin_skills(base_dir: &Path) -> Vec<Skill> {
     let mut skills = vec![];
+    let cache = base_dir.join("plugins/cache");
+    let subdirs = |p: &Path| -> Vec<PathBuf> {
+        fs::read_dir(p)
+            .map(|rd| {
+                rd.flatten()
+                    .map(|e| e.path())
+                    .filter(|p| p.is_dir())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    for marketplace in subdirs(&cache) {
+        for plugin in subdirs(&marketplace) {
+            for version in subdirs(&plugin) {
+                for skill_dir in subdirs(&version.join("skills")) {
+                    let skill_md = skill_dir.join("SKILL.md");
+                    if skill_md.exists() {
+                        if let Ok(skill) = parse_skill_md(&skill_md, "plugin") {
+                            skills.push(skill);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    skills
+}
+
+pub fn get_skills(base_dir: &Path) -> Result<Vec<Skill>, String> {
+    let mut skills = get_plugin_skills(base_dir);
+    let dir = skills_dir(base_dir);
+    if !dir.exists() { return Ok(skills); }
     for entry in fs::read_dir(&dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("md") {
+        if path.is_dir() {
+            // Claude Code 标准格式：skills/<name>/SKILL.md
+            let skill_md = path.join("SKILL.md");
+            if !skill_md.exists() {
+                continue;
+            }
+            let raw = fs::read_to_string(&skill_md).map_err(|e| e.to_string())?;
+            let dir_name = path.file_name().unwrap().to_string_lossy().to_string();
+            skills.push(Skill {
+                name: extract_frontmatter_field(&raw, "name").unwrap_or(dir_name),
+                description: extract_frontmatter_field(&raw, "description")
+                    .unwrap_or_default(),
+                content: Some(raw),
+                file_path: Some(skill_md.to_string_lossy().to_string()),
+                location: "user".into(),
+                dependencies: None,
+            });
+        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            // 兼容平铺 skills/<name>.md
             let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
             let name = path.file_stem().unwrap().to_string_lossy().to_string();
             skills.push(Skill {
@@ -48,21 +115,30 @@ pub fn get_skill(base_dir: &Path, name: &str) -> Result<Option<Skill>, String> {
 
 pub fn save_skill(base_dir: &Path, skill: &Skill) -> Result<(), String> {
     let dir = skills_dir(base_dir);
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let file_name = format!("{}.md", skill.name);
-    let path = safe_join(&dir, &file_name)?;
     let content = skill.content.clone().unwrap_or_else(|| {
         format!("---\nname: {}\ndescription: {}\n---\n", skill.name, skill.description)
     });
-    write_atomic(&path, &content).map_err(|e| e.to_string())
+    let flat_path = safe_join(&dir, &format!("{}.md", skill.name))?;
+    if flat_path.exists() {
+        // 已存在的平铺技能就地更新
+        return write_atomic(&flat_path, &content).map_err(|e| e.to_string());
+    }
+    // 默认采用 Claude Code 标准目录格式 skills/<name>/SKILL.md
+    let skill_dir = safe_join(&dir, &skill.name)?;
+    fs::create_dir_all(&skill_dir).map_err(|e| e.to_string())?;
+    write_atomic(&skill_dir.join("SKILL.md"), &content).map_err(|e| e.to_string())
 }
 
 pub fn delete_skill(base_dir: &Path, name: &str) -> Result<(), String> {
     let dir = skills_dir(base_dir);
-    let file_name = format!("{}.md", name);
-    let path = safe_join(&dir, &file_name)?;
-    if path.exists() {
-        fs::remove_file(path).map_err(|e| e.to_string())?;
+    let skill_dir = safe_join(&dir, name)?;
+    if skill_dir.is_dir() && skill_dir.join("SKILL.md").exists() {
+        fs::remove_dir_all(&skill_dir).map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    let flat_path = safe_join(&dir, &format!("{}.md", name))?;
+    if flat_path.exists() {
+        fs::remove_file(flat_path).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -183,5 +259,83 @@ mod tests {
         let dir = tempdir().unwrap();
         let result = delete_skill(dir.path(), "../evil");
         assert!(result.is_err(), "expected Err for name '../evil'");
+    }
+
+    // 真实 Claude Code 技能格式：~/.claude/skills/<name>/SKILL.md
+    #[test]
+    fn get_skills_reads_directory_based_skills() {
+        let dir = tempdir().unwrap();
+        let skill_dir = dir.path().join("skills/my-dir-skill");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: my-dir-skill\ndescription: dir based\n---\n# body",
+        )
+        .unwrap();
+        let skills = get_skills(dir.path()).unwrap();
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "my-dir-skill");
+        assert_eq!(skills[0].description, "dir based");
+        assert!(skills[0].file_path.as_ref().unwrap().ends_with("SKILL.md"));
+    }
+
+    #[test]
+    fn get_skills_dir_name_fallback_when_no_frontmatter_name() {
+        let dir = tempdir().unwrap();
+        let skill_dir = dir.path().join("skills/fallback-name");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "# no frontmatter").unwrap();
+        let skills = get_skills(dir.path()).unwrap();
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "fallback-name");
+    }
+
+    #[test]
+    fn get_skills_mixes_flat_and_directory_skills() {
+        let dir = tempdir().unwrap();
+        let skills_root = dir.path().join("skills");
+        fs::create_dir_all(skills_root.join("dir-skill")).unwrap();
+        fs::write(skills_root.join("dir-skill/SKILL.md"), "---\ndescription: d\n---\n").unwrap();
+        fs::write(skills_root.join("flat-skill.md"), "---\ndescription: f\n---\n").unwrap();
+        let mut names: Vec<String> =
+            get_skills(dir.path()).unwrap().into_iter().map(|s| s.name).collect();
+        names.sort();
+        assert_eq!(names, vec!["dir-skill", "flat-skill"]);
+    }
+
+    #[test]
+    fn get_skills_includes_plugin_skills() {
+        // 插件技能：plugins/cache/<marketplace>/<plugin>/<version>/skills/<name>/SKILL.md
+        let dir = tempdir().unwrap();
+        let plugin_skill = dir
+            .path()
+            .join("plugins/cache/official/superpowers/1.0.0/skills/tdd");
+        fs::create_dir_all(&plugin_skill).unwrap();
+        fs::write(
+            plugin_skill.join("SKILL.md"),
+            "---\nname: tdd\ndescription: plugin skill\n---\n",
+        )
+        .unwrap();
+        let skills = get_skills(dir.path()).unwrap();
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "tdd");
+        assert_eq!(skills[0].location, "plugin");
+    }
+
+    #[test]
+    fn save_skill_writes_directory_layout_and_delete_removes_dir() {
+        let dir = tempdir().unwrap();
+        let skill = Skill {
+            name: "new-skill".into(),
+            description: "n".into(),
+            content: Some("---\nname: new-skill\ndescription: n\n---\n".into()),
+            file_path: None,
+            location: "user".into(),
+            dependencies: None,
+        };
+        save_skill(dir.path(), &skill).unwrap();
+        assert!(dir.path().join("skills/new-skill/SKILL.md").exists());
+        delete_skill(dir.path(), "new-skill").unwrap();
+        assert!(!dir.path().join("skills/new-skill").exists());
     }
 }

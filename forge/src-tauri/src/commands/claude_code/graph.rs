@@ -24,7 +24,11 @@ pub struct DependencyGraph {
 
 pub fn get_dependency_graph(base_dir: &Path) -> Result<DependencyGraph, String> {
     let skills = super::skills::get_skills(base_dir)?;
-    let agents = super::agents::get_agents(base_dir)?;
+    // 依赖图只画文件型资产，内置代理无文件、无依赖，排除
+    let agents: Vec<_> = super::agents::get_agents(base_dir)?
+        .into_iter()
+        .filter(|a| a.source != "builtin")
+        .collect();
 
     let mut nodes = vec![];
     let mut edges = vec![];

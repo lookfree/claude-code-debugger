@@ -23,6 +23,7 @@ export interface Agent {
   file_path?: string
   location: string
   dependencies?: string[]
+  source: 'builtin' | 'user'
 }
 
 export interface ClaudeMdFile {

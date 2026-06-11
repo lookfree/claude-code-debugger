@@ -65,16 +65,41 @@ export default function Agents() {
             <div style={{ color: '#6b7280', fontSize: 13 }}>Loading...</div>
           ) : filtered.length === 0 ? (
             <div style={{ color: '#6b7280', fontSize: 13 }}>No agents found</div>
-          ) : filtered.map(agent => (
-            <button
-              key={agent.name}
-              style={s.item(selected?.name === agent.name)}
-              onClick={() => setSelected(agent)}
-            >
-              <div>{agent.name}</div>
-              <span style={s.badge}>{agent.location}</span>
-            </button>
-          ))}
+          ) : (
+            <>
+              {filtered.some(a => a.source === 'builtin') && (
+                <div style={s.label}>内置代理</div>
+              )}
+              {filtered.filter(a => a.source === 'builtin').map(agent => (
+                <button
+                  key={agent.name}
+                  style={s.item(selected?.name === agent.name)}
+                  onClick={() => setSelected(agent)}
+                >
+                  <div>{agent.name}</div>
+                  <span style={{ ...s.badge, color: '#3b82f6', borderColor: '#1e3a5f' }}>内置</span>
+                </button>
+              ))}
+              {filtered.some(a => a.source === 'user') && (
+                <div style={{ ...s.label, marginTop: 8 }}>已安装代理</div>
+              )}
+              {filtered.filter(a => a.source === 'user').length === 0 && !loading && (
+                <div style={{ color: '#6b7280', fontSize: 12 }}>
+                  暂无自定义代理（~/.claude/agents/）
+                </div>
+              )}
+              {filtered.filter(a => a.source === 'user').map(agent => (
+                <button
+                  key={agent.name}
+                  style={s.item(selected?.name === agent.name)}
+                  onClick={() => setSelected(agent)}
+                >
+                  <div>{agent.name}</div>
+                  <span style={s.badge}>{agent.location}</span>
+                </button>
+              ))}
+            </>
+          )}
         </div>
       </div>
 
@@ -86,8 +111,15 @@ export default function Agents() {
                 <div style={{ fontSize: 22, fontWeight: 700 }}>{selected.name}</div>
                 <div style={{ color: '#9ca3af', marginTop: 4, fontSize: 14 }}>{selected.description}</div>
               </div>
-              <span style={s.badge}>{selected.location}</span>
+              <span style={selected.source === 'builtin' ? { ...s.badge, color: '#3b82f6', borderColor: '#1e3a5f' } : s.badge}>
+                {selected.source === 'builtin' ? '内置' : selected.location}
+              </span>
             </div>
+            {selected.source === 'builtin' && (
+              <div style={{ ...s.card, color: '#9ca3af', fontSize: 13 }}>
+                内置代理由 Claude Code 自带，无对应文件，不可编辑或删除。
+              </div>
+            )}
             {selected.dependencies && selected.dependencies.length > 0 && (
               <div style={s.card}>
                 <div style={s.label}>Dependencies</div>
