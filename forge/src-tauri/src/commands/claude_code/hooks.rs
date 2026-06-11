@@ -55,14 +55,37 @@ pub fn get_hooks(base_dir: &Path) -> Result<Vec<HookEntry>, String> {
     Ok(result)
 }
 
+/// Resolve the settings.json path based on location and optional project_path.
+/// location=="project" → <project_path>/.claude/settings.json
+/// otherwise           → <base_dir>/settings.json
+fn resolve_settings_path(base_dir: &Path, location: &str, project_path: Option<&str>) -> Result<PathBuf, String> {
+    if location == "project" {
+        let proj = project_path.ok_or("project_path required when location is 'project'")?;
+        Ok(PathBuf::from(proj).join(".claude").join("settings.json"))
+    } else {
+        Ok(settings_path(base_dir))
+    }
+}
+
 pub fn save_hook_to_settings(
     base_dir: &Path,
     hook_type: &str,
     hook_config: Value,
-    _location: &str,
+    location: &str,
     matcher_index: Option<usize>,
 ) -> Result<(), String> {
-    let path = settings_path(base_dir);
+    save_hook_to_settings_proj(base_dir, hook_type, hook_config, location, None, matcher_index)
+}
+
+pub fn save_hook_to_settings_proj(
+    base_dir: &Path,
+    hook_type: &str,
+    hook_config: Value,
+    location: &str,
+    project_path: Option<&str>,
+    matcher_index: Option<usize>,
+) -> Result<(), String> {
+    let path = resolve_settings_path(base_dir, location, project_path)?;
     let mut doc = read_json(&path)?;
     let obj = doc.as_object_mut().ok_or("settings not object")?;
     let hooks = obj.entry("hooks").or_insert(Value::Object(Default::default()));
@@ -82,9 +105,19 @@ pub fn delete_hook_from_settings(
     base_dir: &Path,
     hook_type: &str,
     matcher_index: usize,
-    _location: &str,
+    location: &str,
 ) -> Result<(), String> {
-    let path = settings_path(base_dir);
+    delete_hook_from_settings_proj(base_dir, hook_type, matcher_index, location, None)
+}
+
+pub fn delete_hook_from_settings_proj(
+    base_dir: &Path,
+    hook_type: &str,
+    matcher_index: usize,
+    location: &str,
+    project_path: Option<&str>,
+) -> Result<(), String> {
+    let path = resolve_settings_path(base_dir, location, project_path)?;
     let mut doc = read_json(&path)?;
     if let Some(arr) = doc.as_object_mut()
         .and_then(|o| o.get_mut("hooks"))
@@ -95,6 +128,7 @@ pub fn delete_hook_from_settings(
         if matcher_index < arr.len() { arr.remove(matcher_index); }
     }
     let pretty = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
+    if let Some(p) = path.parent() { fs::create_dir_all(p).map_err(|e| e.to_string())?; }
     write_atomic(&path, &pretty)
 }
 
@@ -209,12 +243,12 @@ fn resolve_base(b: Option<String>) -> Result<PathBuf, String> {
 #[tauri::command]
 pub fn cmd_get_hooks(base_dir: Option<String>) -> Result<Vec<HookEntry>, String> { get_hooks(&resolve_base(base_dir)?) }
 #[tauri::command]
-pub fn cmd_save_hook_to_settings(hook_type: String, hook_config: Value, location: String, base_dir: Option<String>, matcher_index: Option<usize>) -> Result<(), String> {
-    save_hook_to_settings(&resolve_base(base_dir)?, &hook_type, hook_config, &location, matcher_index)
+pub fn cmd_save_hook_to_settings(hook_type: String, hook_config: Value, location: String, base_dir: Option<String>, matcher_index: Option<usize>, project_path: Option<String>) -> Result<(), String> {
+    save_hook_to_settings_proj(&resolve_base(base_dir)?, &hook_type, hook_config, &location, project_path.as_deref(), matcher_index)
 }
 #[tauri::command]
-pub fn cmd_delete_hook_from_settings(hook_type: String, matcher_index: usize, location: String, base_dir: Option<String>) -> Result<(), String> {
-    delete_hook_from_settings(&resolve_base(base_dir)?, &hook_type, matcher_index, &location)
+pub fn cmd_delete_hook_from_settings(hook_type: String, matcher_index: usize, location: String, base_dir: Option<String>, project_path: Option<String>) -> Result<(), String> {
+    delete_hook_from_settings_proj(&resolve_base(base_dir)?, &hook_type, matcher_index, &location, project_path.as_deref())
 }
 #[tauri::command]
 pub fn cmd_create_hook_script(script_path: String, content: String) -> Result<String, String> {
@@ -261,6 +295,52 @@ mod tests {
         assert_eq!(hooks.len(), 1);
         delete_hook_from_settings(dir.path(), "PreToolUse", 0, "user").unwrap();
         assert!(get_hooks(dir.path()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a1_project_scope_hook_lands_in_project_settings() {
+        let base = tempdir().unwrap();
+        let proj = tempdir().unwrap();
+        let cfg = json!({"matcher": "*", "hooks": [{"type": "command", "command": "echo proj"}]});
+        // Write to project scope
+        save_hook_to_settings_proj(base.path(), "PreToolUse", cfg, "project", Some(proj.path().to_str().unwrap()), None).unwrap();
+        // Hook present in project settings
+        let proj_settings = proj.path().join(".claude").join("settings.json");
+        assert!(proj_settings.exists(), "project settings.json should be created");
+        let doc: Value = serde_json::from_str(&fs::read_to_string(&proj_settings).unwrap()).unwrap();
+        let hooks = doc["hooks"]["PreToolUse"].as_array().unwrap();
+        assert_eq!(hooks.len(), 1);
+        // User base settings should NOT exist
+        let user_settings = base.path().join("settings.json");
+        assert!(!user_settings.exists(), "user settings.json should be untouched");
+    }
+
+    #[test]
+    fn a1_user_scope_hook_lands_in_user_settings() {
+        let base = tempdir().unwrap();
+        let proj = tempdir().unwrap();
+        let cfg = json!({"matcher": "*", "hooks": [{"type": "command", "command": "echo user"}]});
+        // Write to user scope
+        save_hook_to_settings_proj(base.path(), "PreToolUse", cfg, "user", Some(proj.path().to_str().unwrap()), None).unwrap();
+        // Hook present in user settings
+        let user_settings = base.path().join("settings.json");
+        assert!(user_settings.exists(), "user settings.json should be created");
+        // Project .claude dir should NOT exist
+        let proj_claude = proj.path().join(".claude");
+        assert!(!proj_claude.exists(), "project .claude dir should be untouched");
+    }
+
+    #[test]
+    fn a1_project_scope_delete_removes_from_project_only() {
+        let base = tempdir().unwrap();
+        let proj = tempdir().unwrap();
+        let cfg = json!({"matcher": "*", "hooks": [{"type": "command", "command": "echo proj"}]});
+        save_hook_to_settings_proj(base.path(), "PreToolUse", cfg, "project", Some(proj.path().to_str().unwrap()), None).unwrap();
+        delete_hook_from_settings_proj(base.path(), "PreToolUse", 0, "project", Some(proj.path().to_str().unwrap())).unwrap();
+        let proj_settings = proj.path().join(".claude").join("settings.json");
+        let doc: Value = serde_json::from_str(&fs::read_to_string(&proj_settings).unwrap()).unwrap();
+        let hooks = doc["hooks"]["PreToolUse"].as_array().unwrap();
+        assert!(hooks.is_empty());
     }
 
     #[test]
