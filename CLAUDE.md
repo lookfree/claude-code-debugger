@@ -1,551 +1,75 @@
-# Claude Code Debugger & Manager
+# claude-code-debugger
 
-A powerful application for debugging and managing Claude Code skills, agents, hooks, MCP servers, and slash commands. Supports both **Desktop (Electron)** and **Web** modes.
+围绕 Claude Code 的桌面工具。Electron + React + TypeScript，双模式（桌面 Electron / Web Express）。
 
-## Overview
+**定位正在演进**：从一年前的"Claude Code 配置浏览器"重做成 **"Harness 工作台"**——配置 / 调试 / 观测 / 编排 / 教学 五件事。详细方向、路径、按版本对齐的功能缺口、以及每个功能的可执行 spec，全部在 `docs/`：
 
-This application provides a visual interface for managing all Claude Code components. It allows developers to browse, inspect, test, and manage skills, agents, hooks, MCP servers, and slash commands through an intuitive UI. The application can run as either a desktop application (Electron) or a web application (Express + React).
+- `docs/claude-code-debugger演进路径.md` —— 产品方向、五支柱、Phase 0/1/2/3 划分（**先读这个**）。
+- `docs/harness-ide-spec/README.md` —— 22 个实现 spec 的索引（spec001–022）+ 状态 + 依赖关系。
+- `docs/harness-ide-spec/功能版本对照表.md` —— 功能 ID（ORCH/OBS/HOOK/PERM/MODEL/SKILL/MISC）↔ Claude Code 版本 ↔ 项目覆盖状态。
 
-## Running Modes
+**动代码前先看对应 spec**（spec 引了真实 file:line、给了类型 diff 和验收标准）。改了方向/功能后回头更新这三份文档。
 
-| Mode | Command | Description |
-|------|---------|-------------|
-| **Desktop (Electron)** | `npm run electron:dev` | Full-featured desktop application with native integrations |
-| **Web** | `npm run web:dev` | Browser-based access with Express API backend |
+## 工作方式
 
-### Web Mode Limitations
+- **想清楚再写**：先说清假设；有多种理解就摆出来让我选，别默默挑一个；有更简单的做法就直说、该反对就反对；不清楚就停下来问，别猜。
+- **最简实现**：解决问题的最少代码，不加没要求的功能/抽象/配置/防御。单次使用就别造抽象。写完若 200 行能压到 50，就重写。和项目"不做什么"哲学一致（Thin Harness）。
+- **外科手术式改动**：只动该动的，每一行改动都能追溯到需求。别顺手"改进"相邻代码/注释/格式，别重构没坏的东西，跟现有风格走。只清理自己改动产生的孤儿（import/变量）；遇到无关的既有死代码——**提一句，别删**（除非明确要求）。
+- **目标驱动**：把任务变成可验证的成功标准再做。多步任务先列简短计划，每步带验证点（改 X → 验证：Y）。spec 的"验收标准"就是现成的成功标准，照着 loop 到通过。
 
-Some features require desktop mode:
-- Launch debug sessions (requires local terminal)
-- Hook testing (security reasons)
-- MCP connection testing
-- File watching
-- Project path selection dialog
-
-## Project Structure
-
-```
-claude-code-debugger/
-├── electron/              # Electron main process
-│   ├── main.ts           # Main process entry point
-│   ├── preload.cjs       # Preload script (CommonJS)
-│   ├── preload.ts        # Preload TypeScript source
-│   ├── ipc/              # IPC handlers (modular)
-│   │   ├── index.ts      # Main IPC registry
-│   │   ├── skills.ts     # Skills IPC handlers
-│   │   ├── hooks.ts      # Hooks IPC handlers
-│   │   ├── mcp.ts        # MCP IPC handlers
-│   │   ├── commands.ts   # Commands IPC handlers
-│   │   ├── agents.ts     # Agents IPC handlers
-│   │   ├── claudemd.ts   # CLAUDE.md IPC handlers
-│   │   ├── project.ts    # Project IPC handlers
-│   │   └── providers.ts  # AI Provider IPC handlers
-│   └── services/         # Backend services
-│       └── file-manager.ts  # File system operations
-├── server/               # Express API server (Web mode)
-│   └── index.ts          # REST API routes
-├── src/                  # React frontend
-│   ├── App.tsx          # Main app component
-│   ├── main.tsx         # Entry point with i18n init
-│   ├── i18n/            # Internationalization
-│   │   ├── index.ts     # i18n configuration
-│   │   └── locales/     # Translation files
-│   │       ├── en/      # English translations
-│   │       └── zh/      # Chinese translations
-│   ├── pages/           # Page components
-│   │   ├── Dashboard.tsx   # Dashboard overview
-│   │   ├── Skills.tsx      # Skills browser
-│   │   ├── Agents.tsx      # Agents manager
-│   │   ├── Hooks.tsx       # Hooks configurator
-│   │   ├── MCP.tsx         # MCP servers manager
-│   │   ├── Commands.tsx    # Slash commands editor
-│   │   ├── ClaudeMd.tsx    # CLAUDE.md file manager
-│   │   ├── Graph.tsx       # Dependency graph
-│   │   ├── Models.tsx      # AI Model providers
-│   │   └── Settings.tsx    # Settings page
-│   ├── components/      # Reusable UI components
-│   │   ├── layout/
-│   │   │   ├── Layout.tsx          # Main layout
-│   │   │   └── LanguageSwitcher.tsx # Language selector
-│   │   └── ui/          # shadcn/ui components
-│   ├── stores/          # State management
-│   │   └── languageStore.ts  # Language state (Zustand)
-│   └── lib/            # Utilities and API client
-│       ├── api.ts      # Unified API (Electron IPC / HTTP)
-│       └── utils.ts    # Utility functions
-├── shared/              # Shared TypeScript types
-│   └── types/          # Type definitions
-├── vite.config.ts       # Vite config (Electron mode)
-├── vite.config.web.ts   # Vite config (Web mode)
-└── dist-electron/       # Built electron files
-```
-
-## File Structure
-
-- `electron/` - Main process code that runs in Node.js context
-  - `main.ts` - Creates browser window, manages app lifecycle
-  - `preload.cjs` - Exposes safe IPC APIs to renderer via contextBridge
-  - `ipc/` - Modular IPC handlers for frontend communication
-  - `services/file-manager.ts` - Handles reading/writing skills, agents, etc.
-
-- `server/` - Express API server for Web mode
-  - `index.ts` - REST API routes that mirror Electron IPC functionality
-
-- `src/` - Renderer process code that runs in browser context
-  - `pages/` - Full-page components for each section
-  - `components/` - Reusable UI components (buttons, lists, forms)
-  - `lib/api.ts` - Unified API client (auto-detects Electron vs Web mode)
-
-- `shared/types/` - TypeScript interfaces shared between main, server, and renderer
-
-## Setup & Installation
-
-### Prerequisites
-
-- Node.js 18+
-- npm or yarn
-- macOS, Windows, or Linux
-
-### Installation
+## 跑起来
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd skills-ui
-
-# Install dependencies
 npm install
-
-# Start development server
-npm run electron:dev
+npm run electron:dev      # 桌面端（主模式）
+npm run web:dev           # Web 模式（Express :3001 + Vite :5173）
+npm run electron:build    # 出包
 ```
 
-### Development
+⚠️ **已知 build 时序 bug（spec001 修）**：`electron:dev` 里 `copy:preload` 可能在 vite 首次 build 出 `dist-electron/` 之前就跑，`cp` 失败 → preload 没拷过去 → `window.electronAPI` 全断、IPC 不通。首次启动若 Electron 窗口空白/报 `Preload error`，先 `mkdir -p dist-electron && cp electron/preload.cjs dist-electron/preload.cjs` 再重启。彻底修见 spec001。
 
-Choose your preferred mode:
-
-```bash
-# Desktop mode (Electron + Vite hot reload)
-npm run electron:dev
-
-# Web mode (Express API + Vite)
-npm run web:dev
-```
-
-**Desktop Mode** starts:
-1. Vite dev server on http://localhost:5173
-2. Electron app that loads the dev server
-
-**Web Mode** starts:
-1. Express API server on http://localhost:3001
-2. Vite dev server on http://localhost:5173 with API proxy
-
-### Build
-
-```bash
-# Build Desktop app for production
-npm run electron:build
-
-# Build Web app for production
-npm run web:build
-```
-
-## Architecture
-
-### Electron Mode (Desktop)
-
-The app uses Electron's IPC (Inter-Process Communication) for frontend-backend communication:
+## 架构
 
 ```
-Frontend (React)
-    ↓ window.electronAPI.getSkills()
-Preload Script (contextBridge)
-    ↓ ipcRenderer.invoke('skills:getAll')
-Main Process (IPC Handlers)
-    ↓ FileManager.getSkills()
-File System (~/.claude/)
+electron/services/file-manager.ts   # 核心：扫描/读写 ~/.claude 和项目 .claude 配置（1400 行）
+electron/services/provider-manager.ts
+electron/ipc/*.ts                    # 每个域一个 registerXxxHandlers(ipcMain, fileManager)
+electron/preload.cjs                 # contextBridge（必须 .cjs）
+server/index.ts                      # Web 模式 REST，镜像 IPC
+src/pages/*.tsx                      # Dashboard/Skills/Agents/Hooks/MCP/Commands/ClaudeMd/Graph/Models/Settings
+src/lib/api.ts                       # 统一 API，自动探测 Electron(IPC) / Web(HTTP)
+shared/types/*.ts                    # 主进程/渲染进程共享类型
 ```
 
-### Web Mode (Browser)
-
-In web mode, the app uses HTTP REST API instead of IPC:
-
-```
-Frontend (React)
-    ↓ fetch('/api/skills')
-Express API Server (port 3001)
-    ↓ FileManager.getSkills()
-File System (~/.claude/)
-```
-
-### Unified API Client
-
-The `src/lib/api.ts` automatically detects the running environment and uses the appropriate backend:
-
-```typescript
-import { api } from '@/lib/api'
-
-// Works in both Electron and Web modes
-const skills = await api.skills.getAll()
-const hooks = await api.hooks.getAll()
-
-// Check current mode
-if (api.isElectron()) {
-  // Electron-only features
-}
-```
-
-### Security Model
-
-- **Context Isolation**: Enabled - renderer has no direct Node.js access
-- **Node Integration**: Disabled - no Node APIs in renderer
-- **Preload Script**: Acts as security bridge using contextBridge
-- **Sandbox**: Disabled (required for preload to work)
-
-### File Manager Service
-
-Manages all file operations for Claude Code components:
-
-- **Skills**: Scans `~/.claude/plugins/marketplaces/anthropic-agent-skills/*/SKILL.md` and `~/.claude/skills/*/SKILL.md`
-- **Agents**: Manages agent configurations
-- **Hooks**: Handles hook scripts
-- **MCP Servers**: Manages MCP server configs
-- **Slash Commands**: Manages command definitions
-
-## Tech Stack
-
-### Core
-- **Electron** - Desktop application framework
-- **Express.js** - Web API server (for web mode)
-- **React 18** - UI framework
-- **TypeScript** - Type safety
-- **Vite** - Build tool and dev server
-
-### UI & Styling
-- **Tailwind CSS** - Utility-first CSS
-- **shadcn/ui** - Component library
-- **Lucide React** - Icon library
-
-### State Management
-- **Zustand** - Lightweight state management
-- **React Router** - Client-side routing
-
-### Internationalization
-- **i18next** - Internationalization framework
-- **react-i18next** - React bindings for i18next
-- **i18next-browser-languagedetector** - Automatic language detection
-
-### Build Tools
-- **vite-plugin-electron** - Electron integration for Vite
-- **vite-plugin-electron-renderer** - Renderer process support
-
-## Development Workflow
-
-### Adding a New Feature
-
-1. **Define Types** in `shared/types/` if needed
-2. **Create IPC Handler** in `electron/ipc.ts`
-3. **Implement Service Logic** in `electron/services/`
-4. **Expose API** in `electron/preload.cjs`
-5. **Add Frontend API** in `src/lib/api.ts`
-6. **Create UI Components** in `src/pages/` or `src/components/`
-
-### Example: Adding Agents Page
-
-```typescript
-// 1. Define types in shared/types/agent.ts
-export interface Agent {
-  name: string
-  description: string
-  // ...
-}
-
-// 2. Add IPC handler in electron/ipc.ts
-ipcMain.handle('agents:getAll', async () => {
-  return fileManager.getAgents()
-})
-
-// 3. Expose in preload.cjs
-contextBridge.exposeInMainWorld('electronAPI', {
-  getAgents: () => ipcRenderer.invoke('agents:getAll'),
-  // ...
-})
-
-// 4. Add to frontend API in src/lib/api.ts
-export const api = {
-  agents: {
-    getAll: () => window.electronAPI.getAgents(),
-    // ...
-  }
-}
-
-// 5. Create page component in src/pages/Agents.tsx
-export function Agents() {
-  const [agents, setAgents] = useState([])
-  // ...
-}
-```
-
-## Testing
-
-### Manual Testing
-
-1. Start dev server: `npm run electron:dev`
-2. Open DevTools in the Electron window
-3. Check console logs for errors
-4. Test each feature manually
-
-### Debug Logs
-
-All components include extensive logging:
-
-- `[Main]` - Main process logs
-- `[Preload]` - Preload script logs
-- `[FileManager]` - File manager service logs
-- `[IPC]` - IPC handler logs
-- `[API]` - Frontend API logs
-- `[Skills Page]` - Page component logs
-
-## Error Handling
-
-### Common Issues
-
-**Preload Script Not Loading**
-- Ensure `preload.cjs` is CommonJS (uses `require()`, not `import`)
-- Check file exists at path logged by main process
-- Verify path in `electron/main.ts` is correct
-
-**electronAPI Undefined**
-- Check DevTools console for preload errors
-- Verify preload script is executing (check console logs)
-- Ensure contextBridge.exposeInMainWorld is called
-
-**Skills Not Loading**
-- Check `~/.claude/` directory exists
-- Verify SKILL.md files are present
-- Check FileManager logs for parsing errors
-
-### Error Patterns
-
-All errors should be caught and logged:
-
-```typescript
-try {
-  const skills = await fileManager.getSkills()
-  console.log('[IPC] Found', skills.length, 'skills')
-  return skills
-} catch (error) {
-  console.error('[IPC] Error getting skills:', error)
-  return []
-}
-```
-
-## npm Scripts
-
-| Script | Description |
-|--------|-------------|
-| `npm run dev` | Start Vite dev server only |
-| `npm run electron:dev` | Start Electron desktop app with hot reload |
-| `npm run electron:build` | Build Electron app for distribution |
-| `npm run web:dev` | Start Web mode (Express API + Vite frontend) |
-| `npm run web:build` | Build Web frontend for production |
-| `npm run server` | Start Express API server only |
-| `npm run build` | Build for production |
-| `npm run lint` | Run ESLint |
-
-## Common Commands
-
-```bash
-# Desktop Development
-npm run electron:dev          # Start Electron with hot reload
-
-# Web Development
-npm run web:dev               # Start Express + Vite for browser access
-
-# Build
-npm run electron:build        # Build Electron app
-npm run web:build             # Build Web frontend
-
-# Debugging
-npm run electron:dev 2>&1 | tee /tmp/electron.log  # Log all output
-
-# Clean
-rm -rf dist-electron dist dist-web node_modules/.vite  # Clean build artifacts
-```
-
-## Core Principles
-
-1. **Security First** - Use context isolation and IPC for all communication
-2. **Type Safety** - Share types between main and renderer processes
-3. **Extensive Logging** - Log all operations for debugging
-4. **Error Handling** - Never crash, always return empty arrays/objects on error
-5. **User Experience** - Provide immediate feedback for all actions
-
-## Features
-
-### ✅ Implemented Features
-
-- **Dual-Mode Support** - Run as Electron desktop app OR web browser app
-- **Multi-language Support** - English and Chinese with seamless switching
-- **Dashboard** - Overview of all Claude Code components
-- **CLAUDE.md Manager** - Browse and edit CLAUDE.md files across projects
-- **Skills Browser** - View and manage Claude Code skills with upload support
-- **Commands Manager** - Manage slash commands with syntax highlighting
-- **MCP Servers** - Configure and manage MCP servers
-- **Hooks Manager** - Configure and test hooks with real-time execution logs
-- **AI Model Providers** - Manage AI model providers and subscriptions
-- **Dependency Graph** - Visualize component dependencies with React Flow
-- **Settings** - Application configuration
-- **Language Switcher** - Easy language selection in sidebar
-
-### 🔧 Recent Updates
-
-- **Dual-Mode Architecture** - Added web mode with Express.js API server
-  - Unified API client auto-detects Electron vs Web environment
-  - Shared FileManager service for both modes
-  - REST API endpoints mirror Electron IPC functionality
-
-- **AI Model Providers** - New Models page for managing AI providers
-  - Support for multiple AI providers (OpenAI, Anthropic, etc.)
-  - Subscription mode management
-  - Provider switching functionality
-
-- **Graph.tsx Null Safety** - Fixed node data structure inconsistency
-  - Updated node type definitions to use nested `data` structure
-  - Added defensive checks for undefined node.data access
-
-- **Internationalization (i18n)** - Complete Chinese and English support
-  - Automatic language detection from browser/localStorage
-  - Persistent language selection
-  - Seamless language switching without page reload
-
-## Internationalization (i18n)
-
-### Language Support
-
-The application supports multiple languages with easy switching:
-
-- **Supported Languages**: English (en), Chinese (zh)
-- **Default Language**: English
-- **Detection**: Auto-detects browser language on first load
-- **Persistence**: Selected language saved to localStorage
-
-### Translation Structure
-
-```
-src/i18n/locales/
-├── en/
-│   ├── common.json      # Buttons, labels, messages
-│   ├── layout.json      # Navigation, app title
-│   └── dashboard.json   # Dashboard page
-└── zh/
-    ├── common.json
-    ├── layout.json
-    └── dashboard.json
-```
-
-### Adding New Translations
-
-1. **Add translation files** for new pages:
-```bash
-# Create translation files
-touch src/i18n/locales/en/newpage.json
-touch src/i18n/locales/zh/newpage.json
-```
-
-2. **Import in `src/i18n/index.ts`**:
-```typescript
-import newpageEn from './locales/en/newpage.json'
-import newpageZh from './locales/zh/newpage.json'
-
-export const resources = {
-  en: {
-    // ...
-    newpage: newpageEn,
-  },
-  zh: {
-    // ...
-    newpage: newpageZh,
-  },
-}
-```
-
-3. **Use in components**:
-```typescript
-import { useTranslation } from 'react-i18next'
-
-function MyComponent() {
-  const { t } = useTranslation('newpage')
-  return <h1>{t('title')}</h1>
-}
-```
-
-### Translation Best Practices
-
-- **Namespace by page**: Use separate JSON files for each page
-- **Common translations**: Put shared text in `common.json`
-- **Structured keys**: Use nested objects for organization
-- **Dynamic values**: Use interpolation `{{variable}}`
-- **Pluralization**: Use i18next plural rules when needed
-
-Example translation file:
-```json
-{
-  "title": "Page Title",
-  "button": {
-    "save": "Save",
-    "cancel": "Cancel"
-  },
-  "message": {
-    "success": "Operation successful",
-    "error": "An error occurred"
-  },
-  "dynamicText": "Welcome, {{name}}!"
-}
-```
-
-## API Endpoints (Web Mode)
-
-The Express API server provides RESTful endpoints that mirror Electron IPC:
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/health` | Health check |
-| `GET /api/skills` | List all skills |
-| `GET /api/hooks` | List all hooks |
-| `GET /api/commands` | List all commands |
-| `GET /api/mcp` | List MCP servers |
-| `GET /api/claudemd/all` | List all CLAUDE.md files |
-| `GET /api/project/context` | Get project context |
-| `GET /api/providers` | List AI providers |
-| `POST /api/providers` | Add new provider |
-| `PUT /api/providers/:id` | Update provider |
-| `DELETE /api/providers/:id` | Delete provider |
-
-## Roadmap
-
-### High Priority
-- [ ] Complete i18n for all pages (Skills, Commands, MCP, Hooks, etc.)
-- [ ] Real-time file watching and auto-refresh
-- [ ] Export/import functionality for configurations
-
-### Medium Priority
-- [ ] Search and filtering across all components
-- [ ] Agents page full implementation
-- [ ] Testing and debugging tools integration
-- [ ] Performance optimization and caching
-- [ ] Docker deployment for web mode
-
-### Low Priority
-- [ ] Dark/Light theme support
-- [ ] Keyboard shortcuts
-- [ ] Configuration backup and restore
-- [ ] Plugin system for extensions
-
-### ✅ Completed
-- [x] Dual-mode architecture (Electron + Web)
-- [x] Express.js API server for web mode
-- [x] Unified API client with environment detection
-- [x] AI Model Providers management
-- [x] Skills upload functionality
-- [x] i18n for Models page
+调用链：`渲染进程 api.xxx()` → preload `contextBridge` → 主进程 IPC handler → `FileManager` → 文件系统。Web 模式同一 `FileManager` 走 Express。
+
+## 关键事实（动手前必须知道，多数是审查实测的）
+
+**Claude Code 配置的真相源**（别盲扫、别想当然）：
+- **激活的 plugin 版本** → `~/.claude/plugins/installed_plugins.json`（schema v2，带 scope/version/installPath）。**不要盲扫 `plugins/cache/` 目录**，那里有废弃版本残留（本机 superpowers 残留 5 个版本目录）。
+- **plugin 是否启用** → `~/.claude/settings.json` 的 `enabledPlugins`（plugin 级，不是版本级）。
+- **plugin 内容结构** → `<installPath>/{skills/*/SKILL.md, commands/*.md, .claude-plugin/plugin.json}`。
+- **三层来源**：user(`~/.claude/`) / project(`<cwd>/.claude/`) / plugin，同名时 user 覆盖 project 覆盖 plugin。
+- **session 运行记录** → `~/.claude/projects/<encoded-cwd>/<session>.jsonl`（encoded-cwd = cwd 把 `/` 换成 `-`），每行一个 JSON turn。
+- **workflow 落盘** → `<session>/workflows/wf_<id>.json`（含 agentCount/phases/status/totalTokens）+ `<session>/subagents/workflows/wf_<id>/agent-<id>.{jsonl,meta.json}`。注意 `agentCount`(声明数) 可能 ≠ 实际落盘 jsonl 数（killed 中断）。
+- **Auto Memory** → `~/.claude/projects/<encoded-cwd>/memory/MEMORY.md` + topic 文件。
+- `claude` CLI **不在 PATH**——所有"改配置"以直接读写文件为主路径，CLI 仅作可选增强。
+
+**写 settings.json 的铁律（spec009）**：统一走 `SettingsWriter`（read-modify-write 整对象 + 原子写 + 保留未知字段）。**禁止** `writeJSONFile` 整覆盖 settings（会丢用户未知字段）。hooks/permissions/model/worktree/MCP 的保存都走它，不准各写各的。
+
+**现状里几个已知偏差（spec 已认领修）**：
+- `file-manager.ts:192` 硬编码扫 `plugins/marketplaces/anthropic-agent-skills`——该目录在 2.1.x 已不存在，导致 Skills 页扫不到任何 plugin skill（spec003/004 修）。
+- `getCommands()` 用 `<dir>/<dir>.md` 子目录约定，真实是平铺 `commands/*.md`（spec006 修）。
+- `getAgents()` 扫 `.json`，但 agent 真相源是 `.md` + YAML frontmatter（spec012 修）。
+- `file-manager.ts:108` chokidar `ignored:/(^|[/\\])\../` 忽略 dotfile——监听 `~/.claude` 实际失效，tail jsonl 不能照搬这条正则（spec014 修）。
+- `file-manager.ts:557` 三层路径里 local 层 location 被误标 `'project'`（spec009 修）。
+- **reactflow 在 deps 但项目从未用过**（`Graph.tsx` 是 lucide 自绘）——Phase 2 拓扑图是首次集成，不是复用。
+
+## 约定
+
+- 改主进程（`electron/`）要重启 Electron；改前端（`src/`）有热重载。
+- 日志前缀：`[Main]` `[Preload]` `[FileManager]` `[IPC]` `[API]`。FileManager 对"文件不存在"应静默返回空，不刷 ERROR（spec002）。
+- 类型放 `shared/types/`，主/渲染共享。新增功能：定类型 → IPC handler → preload 暴露 → `api.ts` 封装 → 页面 → **i18n 文案**。
+- **i18n 是硬要求，开发时同步做，先保中英文**：所有面向用户的字符串走 `useTranslation()` 的 `t()`，**不准硬编码**。基建已就位（`src/i18n/`，`supportedLngs:['en','zh']`，自动探测语言）。加新页面就在 `src/i18n/locales/en/` 和 `src/i18n/locales/zh/` **各建一个同名 namespace JSON**（en 和 zh 必须成对，缺一不可），再在 `src/i18n/index.ts` 注册。已有 namespace：common/layout/dashboard/models/commands/hooks；skills/agents/mcp/claudemd/graph/settings 以及 Phase 2 的新页（sessions/plugins/usage…）都还没有自己的 namespace，谁加这页谁建。每个 UI spec 的"实现步骤"末尾都有 i18n 一项，别跳过。
+- Web 模式保持只读浏览角色：hook 执行 / MCP 测试 / session 监视都只在桌面端。
+- 规划文档用中文。spec 严格按 `docs/harness-ide-spec/README.md` 的模板写。
