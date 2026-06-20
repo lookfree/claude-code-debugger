@@ -193,7 +193,7 @@ async function parseDebugLogFile(filePath: string): Promise<HookExecutionLog[]> 
             entry.message.includes('ENOENT') ||
             entry.message.includes('exit code') ||
             entry.message.includes('timed out')) {
-          lastHookLog.status = 'error'
+          lastHookLog.status = 'failed'
           lastHookLog.error = entry.message
           lastHookLog.output = (lastHookLog.output || '') + '\n[ERROR] ' + entry.message
         }
@@ -204,7 +204,7 @@ async function parseDebugLogFile(filePath: string): Promise<HookExecutionLog[]> 
       if (exitCodeMatch && lastHookLog) {
         const exitCode = parseInt(exitCodeMatch[1], 10)
         if (exitCode !== 0) {
-          lastHookLog.status = 'error'
+          lastHookLog.status = 'failed'
           lastHookLog.exitCode = exitCode
           lastHookLog.error = `Hook exited with code ${exitCode}`
         } else {
@@ -216,7 +216,7 @@ async function parseDebugLogFile(filePath: string): Promise<HookExecutionLog[]> 
       // Pattern: Hook timed out
       const timeoutMatch = entry.message.match(/hook.*timed?\s*out|timeout.*hook/i)
       if (timeoutMatch && lastHookLog) {
-        lastHookLog.status = 'error'
+        lastHookLog.status = 'timeout'
         lastHookLog.error = 'Hook execution timed out'
         lastHookLog.output = (lastHookLog.output || '') + '\n[TIMEOUT] ' + entry.message
         continue
@@ -456,7 +456,9 @@ export function registerHookHandlers(ipcMain: IpcMain, fileManager: FileManager)
       const isMac = process.platform === 'darwin'
       const isWindows = process.platform === 'win32'
 
-      let terminalProc: ReturnType<typeof spawn>
+      // definite-assignment：下面 macOS/Windows/Linux 分支必赋值，且 !launched 时已提前 return，
+      // 到达使用处时 terminalProc 一定已赋值（TS 无法跨分支推断，用 ! 断言）。
+      let terminalProc!: ReturnType<typeof spawn>
 
       if (isMac) {
         // On macOS, open Terminal.app with the claude command
