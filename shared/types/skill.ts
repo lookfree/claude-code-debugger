@@ -44,8 +44,26 @@ export interface Skill {
   scripts?: SkillScript[]
   dependencies?: string[]
   filePath?: string // Actual file path on disk
-  location?: 'user' | 'project' // Where the skill is defined
+  location?: 'user' | 'project' // Where the skill is defined（保留兼容旧 UI）
   content?: string // Full markdown content for trigger analysis
+  // 三层来源元数据（spec003 起；plugin 来源时 marketplace/pluginName/version/pluginScope 有值）
+  source?: SkillSource
+  marketplace?: string
+  pluginName?: string
+  version?: string // plugin 版本（非 skill 自身 metadata.version）
+  pluginScope?: 'user' | 'project'
+  overriddenBy?: string // spec004 覆盖检测填：被哪个 skill uid 覆盖
+}
+
+export type SkillSource = 'user' | 'project' | 'plugin'
+
+/** installed_plugins.json（schema v2）解析后的单条安装记录。spec003 引入，spec004/005/006 共用。 */
+export interface InstalledPluginEntry {
+  pluginName: string // 'superpowers'
+  marketplace: string // 'claude-plugins-official'
+  scope: 'user' | 'project'
+  version: string // '6.0.3'
+  installPath: string // 绝对路径，指向版本目录
 }
 
 export interface SkillStats {

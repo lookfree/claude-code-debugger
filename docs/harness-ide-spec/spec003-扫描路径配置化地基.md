@@ -42,7 +42,7 @@ for (const dir of pluginDirs) {
 
 2. **扫描非递归**——只 `readdir` 一层、只认 `<root>/<dir>/SKILL.md`，扫不进 `<marketplace>/<plugin>/<version>/skills/<skill>/` 这种五段深的结构。
 
-附带事实：同一 plugin 有多版本（superpowers 同时存在 5.0.7 / 5.1.0 / 6.0.0 / 6.0.2 / 6.0.3）。哪个版本当前 enable，记录在 `~/.claude/plugins/installed_plugins.json` 的 `installPath`/`scope`/`version` 字段里。本 spec 先把所有版本都扫出来并带上 `version`，「当前启用哪个」的判定留给 spec005（Plugin Marketplace 浏览器）。
+附带事实：cache 里同一 plugin 有多版本目录（superpowers 5.0.7 / 5.1.0 / 6.0.0 / 6.0.2 / 6.0.3 共 5 个）。但**已安装/登记的版本**记录在 `~/.claude/plugins/installed_plugins.json`（数组条目的 `scope`/`version`/`installPath`），本机只登记 2 个（5.0.7 project + 6.0.3 user）——cache 里另 3 个是废弃残留。**是否 enable** 则是另一个真相源 `settings.json` 的 `enabledPlugins`（plugin 级，spec005 消费）。本 spec 以 installed_plugins.json 为准只扫登记版本（实际落地见下），「同 plugin 多 scope 去重选当前版」交给 spec004，「enable 状态」交给 spec005。
 
 ## 改动方案
 
@@ -178,24 +178,36 @@ async getSkills(): Promise<Skill[]> {
 - `skillCache`（file-manager.ts:46）按 `filePath` 缓存，路径变了仍正确命中，无需改。
 - chokidar watcher（file-manager.ts:97-130）目前 watch `~/.claude` 整棵树，已覆盖 `plugins/cache/`，无需改（但注意第 108 行 `ignored: /(^|[/\\])\../` 会忽略 cache 里的 `.in_use`/`.claude-plugin` 等 dotfile，对 SKILL.md 扫描无影响）。
 
+## 实际落地（实现后修订 —— 两处偏离原文，已与你确认）
+
+经确认采用 **installed_plugins.json 数据源**（而非原文 glob 整个 cache），并把来源字段做成**扁平字段**（对齐 spec004 已写的去重代码），实现反而更简单：
+
+1. **plugin 扫描源 = `installed_plugins.json`**（不盲扫 cache）：本机 cache 有 superpowers 5 个版本目录，但 installed_plugins.json 只登记 2 个（5.0.7 project + 6.0.3 user），盲扫会把 3 个废弃版本也列出。读 installed_plugins.json 天然只拿激活版本 → Skills 页干净。**省掉了原文的 `parsePluginOrigin`**（marketplace/plugin/version 直接来自 installed_plugins.json 条目，不必反解路径）。
+2. **来源字段用扁平形态**：`Skill` 上加 `source/marketplace/pluginName/version/pluginScope/overriddenBy`（不是原文的嵌套 `origin: SkillOrigin`）——因为 spec004 的去重代码（rankTuple）引用的是 `s.source`/`s.pluginScope`/`s.version` 扁平字段，对齐后零返工。新增 `InstalledPluginEntry` 类型（spec004/005/006 共用）。
+3. `globScan` 仍建并使用：plugin 层 glob `<installPath>/skills/*/SKILL.md`、user 层 glob `~/.claude/skills/*/SKILL.md`；它是可复用工具（Phase 2 也用）。
+
+> 仍存在「同名 skill × 2 条」（superpowers 5.0.7 + 6.0.3 都登记）——这是激活版本的真实状态，去重（按 user-scope + 高版本选 winner）是 spec004 的 rankTuple 职责。前端已给 plugin 加 `pluginName@version` 标签区分。
+
 ## 实现步骤
 
-1. [ ] `shared/types/skill.ts`：加 `SkillSource`、`SkillOrigin`，在 `Skill` 接口追加 `origin?: SkillOrigin`。
-2. [ ] 新建 `electron/services/glob-scan.ts`，实现并导出 `globScan`（含缺失静默、符号链接跳过、深度/数量护栏）。
-3. [ ] file-manager.ts：加 `getSkillScanRoots()`、`parsePluginOrigin()`。
-4. [ ] file-manager.ts：用遍历扫描根的循环替换 `getSkills` 第 191-236 段；保留 238-248 的 project JSON 段。
-5. [ ] 删除第 192 行硬编码的 `anthropic-agent-skills` 路径（连同其单层 readdir 逻辑）。
-6. [ ] 前端 Skills 页（`src/pages/Skills.tsx`）：若已读 `location` 染色，追加读 `origin.source` 显示来源（plugin 显示 `marketplace/plugin@version`）。最小改动即可，完整三层 UI 留 spec004。
-7. [ ] 给 `globScan` 写一个最小单测/手测脚本，对着本机 `~/.claude/plugins/cache` 跑，断言能命中 superpowers 的多个 SKILL.md。
+1. [x] `shared/types/skill.ts`：加 `SkillSource`、扁平来源字段（`source/marketplace/pluginName/version/pluginScope/overriddenBy`）、`InstalledPluginEntry`。
+2. [x] 新建 `electron/services/glob-scan.ts`，实现并导出 `globScan`（缺失静默、符号链接跳过、深度/数量护栏）。
+3. [x] file-manager.ts：加 `readInstalledPlugins()`（解析 installed_plugins.json）。`parsePluginOrigin` 不需要了。
+4. [x] file-manager.ts：重写 `getSkills`——plugin 走 installed_plugins.json + globScan、user 走 globScan、project JSON 段保留。
+5. [x] 删除硬编码的 `anthropic-agent-skills` 路径与单层 readdir 逻辑（全文已无该字样）。
+6. [x] `src/pages/Skills.tsx`：badge 改读 `source`（回退 `location`），plugin 加 `pluginName@version` 标签；list key 改复合 key 消除多版本同名的 React 重复 key 警告。
+7. [x] tsx 手测脚本对本机 `~/.claude` 跑 `getSkills`/`globScan`，断言命中数、origin、激活版本、缺失返回 []。
 
 ## 验收标准
 
-- [ ] 删掉所有 `anthropic-agent-skills` 字样后，`npm run electron:dev` 打开 Skills 页，**能看到**本机已装的 superpowers 子 skills（test-driven-development、systematic-debugging 等）、last30days、rust-analyzer-lsp。
-- [ ] 每条 plugin 来源的 skill 带上正确的 `origin`：`{ source:'plugin', marketplace:'claude-plugins-official', plugin:'superpowers', version:'6.0.3' }`。
-- [ ] superpowers 的多版本（5.x / 6.x）都被扫出（去重/选当前版交给 spec005，本 spec 只验「都能扫到且 version 字段正确」）。
-- [ ] `globScan('/不存在的路径', '*/SKILL.md')` 返回 `[]`，**不抛错、不打 ERROR**。
-- [ ] `globScan` 在本机 cache 上的命中数与 `find ~/.claude/plugins/cache -path '*/skills/*/SKILL.md'` 的计数一致。
-- [ ] user 级 `~/.claude/skills/*/SKILL.md`（若有）仍被扫到，`origin.source==='user'`。
+> 验证：tsx 驱动真实 `~/.claude` + app 实跑。`getSkills` 返回 **31**（原为 0），plugin 29 / user 2，全过。
+
+- [x] 删掉所有 `anthropic-agent-skills` 字样后，app 打开 Skills 页**能看到** superpowers 子 skills（brainstorming/executing-plans 等 28 条）、last30days（1）；rust-analyzer-lsp 无 skills 目录故 0 条（正确）。app 日志 `getSkills() returning 31 skills`、`preload exists: true`、无崩溃。
+- [x] plugin skill 来源字段正确：`{ source:'plugin', marketplace:'claude-plugins-official', pluginName:'superpowers', version:'6.0.3', pluginScope:'user' }`。
+- [x] superpowers 只出现**激活的 2 个版本**（5.0.7 + 6.0.3），不是 cache 里的 5 个（installed_plugins.json 数据源的效果）；version 字段正确。
+- [x] `globScan('/不存在的路径', '*/SKILL.md')` 返回 `[]`，不抛错、不打 ERROR。
+- [x] `globScan(<6.0.3>/skills, '*/SKILL.md')` 命中 14，与 `find` 计数一致（14）。
+- [x] user 级 `~/.claude/skills/*/SKILL.md` 仍被扫到（2 条），`source==='user'`。
 
 ## 风险与备注
 

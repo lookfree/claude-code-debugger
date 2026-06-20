@@ -2,7 +2,8 @@ import fs from 'fs/promises'
 import path from 'path'
 import { watch, FSWatcher } from 'chokidar'
 import os from 'os'
-import type { Skill, Agent, Hook, MCPServers, SlashCommand, ProjectContext, ConfigFile } from '../../shared/types'
+import type { Skill, SkillSource, InstalledPluginEntry, Agent, Hook, MCPServers, SlashCommand, ProjectContext, ConfigFile } from '../../shared/types'
+import { globScan } from './glob-scan'
 
 export class FileManager {
   private static instance: FileManager
@@ -68,6 +69,12 @@ export class FileManager {
         // Ignore EPIPE errors when stderr is closed
       }
     },
+  }
+
+  /** Node fs 错误中「文件/目录不存在」的判定。ENOENT=不存在，ENOTDIR=路径中段不是目录，两者都视作「正常缺失」。 */
+  private isMissing(error: unknown): boolean {
+    const code = (error as NodeJS.ErrnoException)?.code
+    return code === 'ENOENT' || code === 'ENOTDIR'
   }
 
   private constructor() {}
@@ -158,6 +165,11 @@ export class FileManager {
       const content = await fs.readFile(filePath, 'utf-8')
       return JSON.parse(content) as T
     } catch (error) {
+      if (this.isMissing(error)) {
+        // 文件不存在是正常状态（如未配置 MCP），静默返回 null
+        return null
+      }
+      // 真错误：权限不足 / 是目录 / JSON 解析失败等，保留 error 以便排查
       this.logger.error(`Error reading JSON file ${filePath}:`, error)
       return null
     }
@@ -183,59 +195,74 @@ export class FileManager {
     }
   }
 
+  /**
+   * 读 ~/.claude/plugins/installed_plugins.json（schema v2），解析成安装记录数组。
+   * 这是「已安装/激活版本」的真相源——不盲扫 cache 目录（cache 里可能残留废弃版本）。
+   * spec003 引入，spec004/005/006 共用。文件缺失/损坏由 readJSONFile 静默处理（返回 []）。
+   */
+  private async readInstalledPlugins(): Promise<InstalledPluginEntry[]> {
+    const file = path.join(this.userConfigPath, 'plugins', 'installed_plugins.json')
+    const data = await this.readJSONFile<{
+      version?: number
+      plugins?: Record<string, Array<{ scope?: string; version?: string; installPath?: string }>>
+    }>(file)
+    if (!data?.plugins) return []
+
+    const out: InstalledPluginEntry[] = []
+    for (const [key, entries] of Object.entries(data.plugins)) {
+      // key 形如 'superpowers@claude-plugins-official'；marketplace 在最后一个 '@' 之后
+      const at = key.lastIndexOf('@')
+      const pluginName = at >= 0 ? key.slice(0, at) : key
+      const marketplace = at >= 0 ? key.slice(at + 1) : ''
+      for (const e of entries || []) {
+        if (!e.installPath || !e.version) continue
+        out.push({
+          pluginName,
+          marketplace,
+          scope: e.scope === 'project' ? 'project' : 'user',
+          version: e.version,
+          installPath: e.installPath,
+        })
+      }
+    }
+    return out
+  }
+
   // Skills
   async getSkills(): Promise<Skill[]> {
     const skills: Skill[] = []
-    this.logger.info('getSkills() called')
 
-    // Scan plugin skills (SKILL.md files)
-    const pluginSkillsPath = path.join(this.userConfigPath, 'plugins', 'marketplaces', 'anthropic-agent-skills')
-    this.logger.info('Scanning plugin skills at:', pluginSkillsPath)
-    try {
-      const pluginDirs = await fs.readdir(pluginSkillsPath)
-      this.logger.info('Found', pluginDirs.length, 'directories')
-      for (const dir of pluginDirs) {
-        const skillPath = path.join(pluginSkillsPath, dir)
-        const stat = await fs.stat(skillPath).catch(() => null)
-        if (stat?.isDirectory()) {
-          const skillMdPath = path.join(skillPath, 'SKILL.md')
-          if (await this.fileExists(skillMdPath)) {
-            this.logger.info('Parsing skill:', dir)
-            const skill = await this.parseSkillMD(skillMdPath, 'user')
-            if (skill) {
-              this.logger.info('Successfully parsed:', skill.name)
-              skills.push(skill)
-            }
-          }
-        }
+    // 1) plugin 来源：以 installed_plugins.json 为准，只扫激活版本的 <installPath>/skills/*/SKILL.md
+    for (const p of await this.readInstalledPlugins()) {
+      const hits = await globScan(path.join(p.installPath, 'skills'), '*/SKILL.md', {
+        maxDepth: 4,
+        maxResults: 2000,
+      })
+      for (const skillMdPath of hits) {
+        const skill = await this.parseSkillMD(skillMdPath, 'user')
+        if (!skill) continue
+        skills.push({
+          ...skill,
+          source: 'plugin',
+          marketplace: p.marketplace,
+          pluginName: p.pluginName,
+          version: p.version,
+          pluginScope: p.scope,
+        })
       }
-    } catch (error) {
-      this.logger.error('Error scanning plugin skills:', error)
     }
 
-    // Scan user skills (both JSON and SKILL.md)
-    const userSkillsPath = path.join(this.userConfigPath, 'skills')
-    try {
-      const exists = await this.fileExists(userSkillsPath)
-      if (exists) {
-        const userDirs = await fs.readdir(userSkillsPath)
-        for (const dir of userDirs) {
-          const skillPath = path.join(userSkillsPath, dir)
-          const stat = await fs.stat(skillPath).catch(() => null)
-          if (stat?.isDirectory()) {
-            const skillMdPath = path.join(skillPath, 'SKILL.md')
-            if (await this.fileExists(skillMdPath)) {
-              const skill = await this.parseSkillMD(skillMdPath, 'user')
-              if (skill) skills.push(skill)
-            }
-          }
-        }
-      }
-    } catch (error) {
-      this.logger.error('Error scanning user skills:', error)
+    // 2) user 来源：~/.claude/skills/*/SKILL.md
+    const userHits = await globScan(path.join(this.userConfigPath, 'skills'), '*/SKILL.md', {
+      maxDepth: 3,
+      maxResults: 2000,
+    })
+    for (const skillMdPath of userHits) {
+      const skill = await this.parseSkillMD(skillMdPath, 'user')
+      if (skill) skills.push({ ...skill, source: 'user' as SkillSource })
     }
 
-    // Also scan for JSON format skills in project
+    // 3) project 级 JSON 格式 skills（保留原行为；project 级 SKILL.md 三层来源留给 spec004）
     const projectSkills = await this.scanDirectory(
       path.join(this.projectPath, '.claude', 'skills'),
       '.json'
@@ -243,10 +270,11 @@ export class FileManager {
     for (const skillPath of projectSkills) {
       const skill = await this.readJSONFile<Skill>(skillPath)
       if (skill) {
-        skills.push({ ...skill, filePath: skillPath, location: 'project' })
+        skills.push({ ...skill, filePath: skillPath, location: 'project', source: 'project' })
       }
     }
 
+    this.logger.info('getSkills() returning', skills.length, 'skills')
     return skills
   }
 
@@ -266,7 +294,7 @@ export class FileManager {
       // Parse YAML frontmatter
       const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/)
       if (!frontmatterMatch) {
-        this.logger.error(`No frontmatter found in ${filePath}`)
+        this.logger.warn(`No frontmatter found, skipping: ${filePath}`)
         return null
       }
 
@@ -911,7 +939,10 @@ export class FileManager {
               commands.push(command)
             }
           } catch (error) {
-            this.logger.error(`Error reading command file ${mdPath}:`, error)
+            if (!this.isMissing(error)) {
+              this.logger.error(`Error reading command file ${mdPath}:`, error)
+            }
+            // 命令目录里 .md 文件名与目录名不一致时，按缺失静默跳过（spec006 修正约定）
           }
         }
       }
@@ -937,7 +968,10 @@ export class FileManager {
               commands.push(command)
             }
           } catch (error) {
-            this.logger.error(`Error reading command file ${mdPath}:`, error)
+            if (!this.isMissing(error)) {
+              this.logger.error(`Error reading command file ${mdPath}:`, error)
+            }
+            // 命令目录里 .md 文件名与目录名不一致时，按缺失静默跳过（spec006 修正约定）
           }
         }
       }

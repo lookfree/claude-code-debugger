@@ -148,20 +148,22 @@ private isMissing(error: unknown): boolean {
 
 ## 实现步骤
 
-1. [ ] 在 file-manager.ts `logger` 定义后新增 `private isMissing(error)` 助手。
-2. [ ] 改 `readJSONFile`（156-164）——ENOENT/ENOTDIR 静默返回 null，其余 error。
-3. [ ] 改插件 skills 扫描 catch（212-214）与 user skills 扫描 catch（234-236）——加 `isMissing` 守卫。
-4. [ ] 改 `getCommands` 两处命令读取 catch（913-915、939-941）——加 `isMissing` 守卫。
-5. [ ] 把第 269 行 frontmatter 缺失从 `logger.error` 降为 `logger.warn`。
-6. [ ] 自查：grep `logger.error` 全文件，逐条确认每个 error 点都对应「真错误」，不再有「文件不存在」误入。
+1. [x] 在 file-manager.ts `logger` 定义后（`:71` 后）新增 `private isMissing(error)` 助手。
+2. [x] 改 `readJSONFile`——ENOENT/ENOTDIR 静默返回 null，其余 error。
+3. [x] 改插件 skills 扫描 catch 与 user skills 扫描 catch——加 `isMissing` 守卫。
+4. [x] 改 `getCommands` 两处命令读取 catch——加 `isMissing` 守卫（`replace_all`，两处同改）。
+5. [x] frontmatter 缺失从 `logger.error` 降为 `logger.warn`。
+6. [x] 自查：grep `logger.(error|warn)` 全文件，确认改过的 5 处都被 `isMissing` 守卫，剩余 error 点（解析 SKILL.md/命令、校验、扫描超时）均为真错误。`tsc --noEmit` file-manager.ts 零类型错误（hooks.ts/api.ts 的报错是既有问题，未碰）。
 
 ## 验收标准
 
-- [ ] 在**没有** `~/.claude/claude_mcp_config.json`、**没有** `~/.claude/skills/`、**没有**插件目录的干净机器上，刷新 MCP / Skills / Commands 页，控制台 **0 条** `[FileManager][ERROR]`。
-- [ ] `getMCPServers` 在文件缺失时返回 `{}`（空对象），页面显示「无 MCP server」而非崩溃或报错。
-- [ ] 故意往 `claude_mcp_config.json` 写**非法 JSON**，刷新时**仍**打 1 条 `[FileManager][ERROR]`（证明真错误没被一并吞掉）。
-- [ ] 故意把 `claude_mcp_config.json` 的权限改成 `000`（`chmod 000`），刷新时打 `EACCES` 的 error（证明权限错误仍上报）。
-- [ ] SKILL.md 缺 frontmatter 时打的是 `[FileManager][WARN]` 而非 ERROR。
+> 验证方式：tsx 脚本驱动 `FileManager`（不依赖 electron），`userConfigPath`/`projectPath` 指向临时空目录，逐场景调 `getMCPServers`/`getSkills`/`getCommands` 并捕获 `console.error/warn`。不污染真实 `~/.claude`。4 场景全过。
+
+- [x] 全缺失（无 claude_mcp_config.json / 无 skills/ / 无插件目录）→ **0 条** `[FileManager][ERROR]`，且 `getMCPServers` 返回 `{}`。
+- [x] `getMCPServers` 文件缺失时返回 `{}`（空对象）。
+- [x] `claude_mcp_config.json` 写**非法 JSON** → **仍** 1 条 `[FileManager][ERROR]`（真错误没被吞）。
+- [x] `chmod 000` → 1 条 ERROR 且含 `EACCES`（权限错误仍上报）。
+- [x] SKILL.md 缺 frontmatter → 0 ERROR + 1 `[FileManager][WARN]`（降级成功）。
 
 ## 风险与备注
 

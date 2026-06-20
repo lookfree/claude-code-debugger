@@ -251,7 +251,7 @@ export default function Skills() {
           ) : (
             filteredSkills.map((skill) => (
               <button
-                key={skill.name}
+                key={`${skill.source ?? skill.location}-${skill.pluginName ?? ''}-${skill.version ?? ''}-${skill.name}`}
                 onClick={() => setSelectedSkill(skill)}
                 className={cn(
                   'w-full text-left px-3 py-2 rounded-lg border transition-colors',
@@ -263,8 +263,13 @@ export default function Skills() {
                 <div className="font-medium text-sm">{skill.name}</div>
                 <div className="flex items-center gap-1 mt-1">
                   <Badge variant="secondary" className="text-xs">
-                    {skill.location}
+                    {skill.source ?? skill.location}
                   </Badge>
+                  {skill.source === 'plugin' && (
+                    <Badge variant="outline" className="text-xs">
+                      {skill.pluginName}@{skill.version}
+                    </Badge>
+                  )}
                 </div>
               </button>
             ))

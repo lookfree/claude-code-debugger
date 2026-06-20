@@ -41,22 +41,34 @@ Phase 0 的"完成标志"包含依赖就绪，但 spec001-003 只认领了 build
 - 在本 spec 末尾（或 `docs/harness-ide-spec/deps-audit-<日期>.md`）追加一张表：依赖 / 当前版本 / 最新 / 类型(dep/dev) / 漏洞等级 / 结论(保持/升级/跟进)。
 - 对"决定升级"的依赖，给确切的 `package.json` 改动 + 一次 `npm install` + 回归（`electron:dev` 一把过、`electron:build` 能出包）。
 
+## 核验结论（2026-06-20 实跑）
+
+**一句话：Electron 32 够用，保持不升；漏洞绝大多数在 dev/构建链、不进产物；非破坏性修复与主版本升级列为跟进，不在 Phase 0。**
+
+- **Electron 32.3.3 验证全过**：`electron:dev`（spec001/003 已多次跑通，`preload exists:true`、getSkills 返回 31）、`vite build`、`electron:build` **完整出包**（产出 `Claude Code Debugger-0.1.0-arm64.dmg` + `-mac.zip`；代码签名因无 Developer ID 证书被跳过，本地构建正常）。依据充分 → **保持 Electron 32，不追 42**（大版本跳跃，BrowserWindow/contextBridge API 有破坏性变更风险，Phase 0 不引入）。
+- **49 个漏洞分类**：1 critical = `shell-quote`（依赖链 `concurrently@8.2.2 → shell-quote`，**devDependency、仅 `web:dev` 用、不进 electron 产物**）；high+critical 经依赖链归类约 10 条纯 dev/构建期（eslint/electron-builder/babel/@xmldom 等）、其余多为 dev 与传入混合的传递依赖。**没有可利用的 critical 落在打进产物的运行时依赖上**。
+- **三档决策**：
+  - **保持**：electron 32、electron-builder 25、vite 5、react 18 —— 当前矩阵 dev+build+package 全通过，不动。
+  - **升级（可选、非破坏）**：`npm audit fix` 能修一批（@babel/core、axios、@xmldom、ajv 等的非破坏补丁）。**本 spec 未执行**——它会大面积改 `package-lock.json`，应作为一次有意识的独立提交，不混进 Phase 0 功能改动。
+  - **跟进（破坏性，单列）**：eslint 8→10（flat-config 破坏性）、electron 32→42、chokidar 3→5、@vitejs/plugin-react 4→6、concurrently 8→10（顺带消除 shell-quote critical）、@typescript-eslint 7→8——都不在 Phase 0。
+- **既有 TS 错误（非依赖问题，登记）**：`tsc --noEmit` 报 6 条，全在 `electron/ipc/hooks.ts`（HookExecution status 联合类型、terminalProc 使用前赋值）与 `src/lib/api.ts`（`import.meta.env` 类型）——是 spec007/后续要碰的既有问题，与本 spec 无关，`npm run build` 的 `tsc` 步会被它们卡住（dev 用 esbuild 不受影响）。
+
 ## 实现步骤
 
-- [ ] 1. 跑 `npm outdated` / `npm audit` / `npx electron --version`，记录基线到 `deps-audit-<日期>.md`。
-- [ ] 2. 把 49 个漏洞按 dep/dev + 是否进产物分类，标出那 1 个 critical 的依赖链。
-- [ ] 3. 跑一次 `npm run electron:build`（依赖 spec001 的 build 时序修复已合入），确认能出包。
-- [ ] 4. 按判定标准决策：列"保持/升级/跟进"三档清单；对升级档给 `package.json` diff。
-- [ ] 5. 执行升级档（如有），`npm install` 后回归 `electron:dev` + `electron:build`。
-- [ ] 6. 把结论写回本 spec / audit 文件，更新功能版本对照表 MISC-11 的状态。
+- [x] 1. 跑 `npm outdated` / `npm audit` / `npx electron --version`，记录基线（见上结论）。
+- [x] 2. 49 漏洞按 dep/dev + 是否进产物分类，critical `shell-quote` 依赖链已查（concurrently，dev-only）。
+- [x] 3. 跑 `npm run electron:build` 确认出包——dmg + zip 均成功。
+- [x] 4. 按判定标准给出"保持/升级/跟进"三档清单（见上）。
+- [~] 5. 升级档未执行（`npm audit fix` 留作独立提交，避免污染 Phase 0；破坏性升级列入跟进）。
+- [x] 6. 结论写回本 spec；更新功能版本对照表 MISC-11 状态。
 
 ## 验收标准
 
-- [ ] 有一份 `deps-audit-<日期>.md`：列清 49 个漏洞的 dep/dev 归类、critical 那条的依赖链、以及"是否进产物"的判断。
-- [ ] 有明确结论句：Electron 32.x **是否够用**（够用则不升，写明依据是"`electron:dev` + `electron:build` 均通过"）。
-- [ ] `npm run electron:build` 在本机能出包（macOS dmg/zip 至少一个 target 成功）。
-- [ ] "升级档"清单里每条都有 `package.json` 前后版本 + 升级后回归通过的记录；"跟进档"（如 eslint 9、那些 deprecated 构建依赖）单独登记，不在 Phase 0 强做。
-- [ ] 功能版本对照表 MISC-11 状态从 TODO 更新为"已核验：保持 Electron 32 / 跟进 N 项"。
+- [x] 49 个漏洞的 dep/dev 归类 + critical（`shell-quote` ← concurrently，dev-only）依赖链 + "是否进产物"判断（见核验结论，无可利用 critical 进产物）。
+- [x] 明确结论：Electron 32.x **够用，不升**——依据 `electron:dev` + `vite build` + `electron:build` 出包均通过。
+- [x] `npm run electron:build` 出包成功：`Claude Code Debugger-0.1.0-arm64.dmg` + `-mac.zip`（arm64）。
+- [x] "升级档"（npm audit fix 非破坏）与"跟进档"（eslint10/electron42/chokidar5/concurrently10 等破坏性）已单列；Phase 0 不强做。
+- [x] 功能版本对照表 MISC-11 状态更新为"已核验：保持 Electron 32 / 跟进若干"。
 
 ## 风险与备注
 

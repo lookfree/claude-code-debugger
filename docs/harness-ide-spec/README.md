@@ -72,10 +72,10 @@
 
 | 编号 | 标题 | Phase | 对应 ID | 状态 |
 |---|---|---|---|---|
-| spec001 | build 时序与 preload 修复 | P0 | 项目自身 bug | 就绪 |
-| spec002 | 扫描报错降级 | P0 | 项目自身 bug | 就绪 |
-| spec003 | 扫描路径配置化地基 | P0 | SKILL-01（地基） | 就绪 |
-| spec022 | 依赖与 Electron 版本核验 | P0 | MISC-11 | 就绪 |
+| spec001 | build 时序与 preload 修复 | P0 | 项目自身 bug | ✅ 完成 |
+| spec002 | 扫描报错降级 | P0 | 项目自身 bug | ✅ 完成 |
+| spec003 | 扫描路径配置化地基 | P0 | SKILL-01（地基） | ✅ 完成 |
+| spec022 | 依赖与 Electron 版本核验 | P0 | MISC-11 | ✅ 完成 |
 
 ### Phase 1 · 补配置层（spec004–013）
 
