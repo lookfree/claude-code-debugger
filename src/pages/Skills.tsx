@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Search, Plus, FileCode, BarChart3, FileText, Zap, BookOpen, Code, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { SOURCE_BADGE_CLASS } from '@/components/SourceBadge'
 import { analyzeTriggers, generateExampleQueries } from '@/utils/triggerAnalyzer'
 import { generateSkillDiagram, type DiagramLayout } from '@/utils/diagramGenerator'
 import mermaid from 'mermaid'
@@ -20,12 +21,6 @@ import rehypeRaw from 'rehype-raw'
 import 'highlight.js/styles/github.css'
 
 type SourceFilter = 'all' | 'user' | 'project' | 'plugin'
-
-const SOURCE_BADGE: Record<string, string> = {
-  user: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
-  project: 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30',
-  plugin: 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30',
-}
 
 // diagram 渲染序号：保证 mermaid.render 的 id 每次唯一（Date.now 在同毫秒会撞 id）。
 let diagramRenderSeq = 0
@@ -42,7 +37,7 @@ function SourceBadge({ skill }: { skill: Skill }) {
   const label =
     src === 'plugin' ? `${t('filter.plugin')} · ${skill.pluginName}@${skill.version}` : t(`filter.${src}`)
   return (
-    <Badge variant="outline" className={cn('text-xs', SOURCE_BADGE[src])}>
+    <Badge variant="outline" className={cn('text-xs', SOURCE_BADGE_CLASS[src])}>
       {label}
     </Badge>
   )

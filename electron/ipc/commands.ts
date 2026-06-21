@@ -32,7 +32,7 @@ export function registerCommandHandlers(ipcMain: IpcMain, fileManager: FileManag
     safeLog('log', '[IPC] commands:saveRaw completed')
   })
 
-  ipcMain.handle('commands:delete', async (_event, name: string) => {
-    await fileManager.deleteCommand(name)
+  ipcMain.handle('commands:delete', async (_event, name: string, filePath?: string) => {
+    await fileManager.deleteCommand(name, filePath)
   })
 }

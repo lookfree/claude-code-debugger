@@ -256,7 +256,8 @@ app.post('/api/commands/raw', asyncHandler(async (req, res) => {
 }))
 
 app.delete('/api/commands/:name', asyncHandler(async (req, res) => {
-  await fileManager.deleteCommand(req.params.name)
+  const filePath = typeof req.query.filePath === 'string' ? req.query.filePath : undefined
+  await fileManager.deleteCommand(req.params.name, filePath)
   res.json({ success: true })
 }))
 

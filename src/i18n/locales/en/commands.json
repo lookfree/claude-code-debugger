@@ -11,6 +11,20 @@
   "enabled": "Enabled",
   "edit": "Edit",
   "delete": "Delete",
+  "filter": {
+    "all": "All",
+    "user": "User",
+    "project": "Project",
+    "plugin": "Plugin"
+  },
+  "overridden": "Overridden",
+  "overriddenHint": "This command is overridden by a same-named, higher-priority source and will not take effect when invoked.",
+  "invokeName": "Invoke as",
+  "readOnly": "Read-only",
+  "pluginScope": {
+    "user": "User scope",
+    "project": "Project scope"
+  },
   "tabs": {
     "overview": "Overview",
     "useguide": "Usage Guide",

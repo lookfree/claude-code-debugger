@@ -59,7 +59,7 @@ shared/types/*.ts                    # 主进程/渲染进程共享类型
 
 **现状里几个已知偏差（spec 已认领修）**：
 - `file-manager.ts:192` 硬编码扫 `plugins/marketplaces/anthropic-agent-skills`——该目录在 2.1.x 已不存在，导致 Skills 页扫不到任何 plugin skill（spec003/004 修）。
-- `getCommands()` 用 `<dir>/<dir>.md` 子目录约定，真实是平铺 `commands/*.md`（spec006 修）。
+- ~~`getCommands()` 用 `<dir>/<dir>.md` 子目录约定，真实是平铺 `commands/*.md`~~（spec006 已修：改扫平铺/命名空间 `commands/**/*.md`，三层来源 + 覆盖检测，plugin 只读）。
 - `getAgents()` 扫 `.json`，但 agent 真相源是 `.md` + YAML frontmatter（spec012 修）。
 - `file-manager.ts:108` chokidar `ignored:/(^|[/\\])\../` 忽略 dotfile——监听 `~/.claude` 实际失效，tail jsonl 不能照搬这条正则（spec014 修）。
 - `file-manager.ts:557` 三层路径里 local 层 location 被误标 `'project'`（spec009 修）。

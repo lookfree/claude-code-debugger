@@ -11,6 +11,20 @@
   "enabled": "已启用",
   "edit": "编辑",
   "delete": "删除",
+  "filter": {
+    "all": "全部",
+    "user": "用户",
+    "project": "项目",
+    "plugin": "插件"
+  },
+  "overridden": "被覆盖",
+  "overriddenHint": "此命令被同名的更高优先级来源覆盖，实际调用时不会生效。",
+  "invokeName": "调用名",
+  "readOnly": "只读",
+  "pluginScope": {
+    "user": "用户级",
+    "project": "项目级"
+  },
   "tabs": {
     "overview": "概览",
     "useguide": "使用指南",

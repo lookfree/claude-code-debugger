@@ -26,12 +26,32 @@ import {
 } from '@/components/ui/dialog'
 import { Search, Terminal, Globe, FolderOpen, FileText, Plus, Pencil, Trash2, Save, X, AlertCircle, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { SourceBadge } from '@/components/SourceBadge'
+
+type SourceFilter = 'all' | 'user' | 'project' | 'plugin'
+
+/** 命令来源（带兼容回退）：source 优先，回退旧 location，再回退 'user'。 */
+function cmdSource(cmd: SlashCommand): string {
+  return cmd.source ?? cmd.location ?? 'user'
+}
+
+/** 列表 key / 选中比较用的稳定标识（同名命令可来自多来源）。 */
+function cmdKey(cmd: SlashCommand): string {
+  return `${cmdSource(cmd)}:${cmd.pluginName ?? ''}:${cmd.version ?? ''}:${cmd.name}`
+}
+
+/** 来源 Badge 文案：plugin 带 pluginName@version，其余取 filter.<source>。 */
+function cmdSourceLabel(cmd: SlashCommand, t: (k: string) => string): string {
+  const src = cmdSource(cmd)
+  return src === 'plugin' ? `${t('filter.plugin')} · ${cmd.pluginName}@${cmd.version}` : t(`filter.${src}`)
+}
 
 export default function Commands() {
   const { t } = useTranslation('commands')
   const [commands, setCommands] = useState<SlashCommand[]>([])
   const [selectedCommand, setSelectedCommand] = useState<SlashCommand | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all')
   const [loading, setLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
@@ -75,8 +95,9 @@ export default function Commands() {
   }
 
   const filteredCommands = commands.filter((cmd) =>
-    cmd.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    cmd.description.toLowerCase().includes(searchQuery.toLowerCase())
+    (sourceFilter === 'all' || cmdSource(cmd) === sourceFilter) &&
+    (cmd.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      cmd.description.toLowerCase().includes(searchQuery.toLowerCase()))
   )
 
   const handleEdit = (command: SlashCommand) => {
@@ -180,8 +201,8 @@ argument-hint: [参数1] [参数2?]
       const updatedCommands = await api.commands.getAll()
       setCommands(updatedCommands)
 
-      // 从更新后的列表中查找并选中保存的命令
-      const savedCmd = updatedCommands.find(c => c.name === name)
+      // 从更新后的列表中查找并选中保存的命令（按 filePath 精确匹配，避免同名多来源选错）
+      const savedCmd = updatedCommands.find(c => c.filePath === targetFilePath) ?? updatedCommands.find(c => c.name === name)
       if (savedCmd) setSelectedCommand(savedCmd)
 
       setIsEditing(false)
@@ -200,7 +221,7 @@ argument-hint: [参数1] [参数2?]
 
     try {
       console.log('[Commands Page] Deleting command:', selectedCommand.name)
-      await api.commands.delete(selectedCommand.name)
+      await api.commands.delete(selectedCommand.name, selectedCommand.filePath)
       setDeleteDialogOpen(false)
       setSelectedCommand(null)
       await loadCommands()
@@ -215,9 +236,6 @@ argument-hint: [参数1] [参数2?]
     setIsCreating(false)
     setValidationErrors([])
   }
-
-  const userCommands = filteredCommands.filter((cmd) => cmd.location === 'user')
-  const projectCommands = filteredCommands.filter((cmd) => cmd.location === 'project')
 
   if (loading) {
     return (
@@ -256,26 +274,23 @@ argument-hint: [参数1] [参数2?]
           {t('newCommand')}
         </Button>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-2">
-          <Card>
-            <CardHeader className="p-4">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Globe className="h-4 w-4" />
-                {t('user')}
-              </CardTitle>
-              <div className="text-2xl font-bold">{userCommands.length}</div>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="p-4">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <FolderOpen className="h-4 w-4" />
-                {t('project')}
-              </CardTitle>
-              <div className="text-2xl font-bold">{projectCommands.length}</div>
-            </CardHeader>
-          </Card>
+        {/* Source filter */}
+        <div className="flex gap-1">
+          {(['all', 'user', 'project', 'plugin'] as const).map((f) => (
+            <Button
+              key={f}
+              size="sm"
+              variant={sourceFilter === f ? 'default' : 'outline'}
+              className="text-xs h-7 px-2"
+              onClick={() => setSourceFilter(f)}
+            >
+              {t(`filter.${f}`)}
+            </Button>
+          ))}
+        </div>
+
+        <div className="text-sm text-muted-foreground px-1">
+          {filteredCommands.length} / {commands.length}
         </div>
 
         {/* Commands List */}
@@ -287,12 +302,16 @@ argument-hint: [参数1] [参数2?]
               </CardContent>
             </Card>
           ) : (
-            filteredCommands.map((cmd) => (
+            filteredCommands.map((cmd) => {
+              const src = cmdSource(cmd)
+              const srcLabel = cmdSourceLabel(cmd, t)
+              return (
               <Card
-                key={cmd.name}
+                key={cmdKey(cmd)}
                 className={cn(
                   'cursor-pointer transition-all hover:border-primary',
-                  selectedCommand?.name === cmd.name && 'border-primary bg-accent'
+                  selectedCommand && cmdKey(selectedCommand) === cmdKey(cmd) && 'border-primary bg-accent',
+                  cmd.overriddenBy && 'opacity-60'
                 )}
                 onClick={() => setSelectedCommand(cmd)}
               >
@@ -301,26 +320,25 @@ argument-hint: [参数1] [参数2?]
                     <div className="flex-1 min-w-0">
                       <CardTitle className="text-base flex items-center gap-2">
                         <Terminal className="h-4 w-4 shrink-0" />
-                        <span className="truncate">/{cmd.name}</span>
+                        <span className={cn('truncate', cmd.overriddenBy && 'line-through')}>/{cmd.name}</span>
                       </CardTitle>
                       <CardDescription className="text-sm mt-1 line-clamp-2">
                         {cmd.description}
                       </CardDescription>
                     </div>
                   </div>
-                  <div className="flex gap-2 mt-2">
-                    <Badge variant={cmd.location === 'user' ? 'default' : 'secondary'}>
-                      {cmd.location === 'user' ? (
-                        <><Globe className="h-3 w-3 mr-1" /> {t('user')}</>
-                      ) : (
-                        <><FolderOpen className="h-3 w-3 mr-1" /> {t('project')}</>
-                      )}
-                    </Badge>
-                    {cmd.enabled && <Badge variant="outline">{t('enabled')}</Badge>}
+                  <div className="flex gap-2 mt-2 flex-wrap">
+                    <SourceBadge source={src} label={srcLabel} />
+                    {cmd.overriddenBy && (
+                      <Badge variant="outline" className="text-xs bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30">
+                        {t('overridden')}
+                      </Badge>
+                    )}
                   </div>
                 </CardHeader>
               </Card>
-            ))
+              )
+            })
           )}
         </div>
       </div>
@@ -339,23 +357,46 @@ argument-hint: [参数1] [参数2?]
                   <CardDescription className="mt-2">{selectedCommand.description}</CardDescription>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => handleEdit(selectedCommand)}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleEdit(selectedCommand)}
+                    disabled={cmdSource(selectedCommand) === 'plugin'}
+                  >
                     <Pencil className="h-4 w-4 mr-1" />
                     {t('edit')}
                   </Button>
-                  <Button variant="destructive" size="sm" onClick={() => setDeleteDialogOpen(true)}>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setDeleteDialogOpen(true)}
+                    disabled={cmdSource(selectedCommand) === 'plugin'}
+                  >
                     <Trash2 className="h-4 w-4 mr-1" />
                     {t('delete')}
                   </Button>
                 </div>
               </div>
-              <div className="flex gap-2 mt-4">
-                <Badge variant={selectedCommand.location === 'user' ? 'default' : 'secondary'}>
-                  {selectedCommand.location === 'user' ? t('user') : t('project')}
-                </Badge>
-                <Badge variant="outline">{selectedCommand.type}</Badge>
-                {selectedCommand.enabled && <Badge variant="outline">{t('enabled')}</Badge>}
+              <div className="flex gap-2 mt-4 flex-wrap items-center">
+                <SourceBadge source={cmdSource(selectedCommand)} label={cmdSourceLabel(selectedCommand, t)} />
+                {selectedCommand.invokeName && selectedCommand.invokeName !== selectedCommand.name && (
+                  <Badge variant="outline" className="font-mono text-xs">
+                    {t('invokeName')}: {selectedCommand.invokeName}
+                  </Badge>
+                )}
+                {cmdSource(selectedCommand) === 'plugin' && (
+                  <Badge variant="outline" className="text-xs">{t('readOnly')}</Badge>
+                )}
+                {selectedCommand.pluginScope && (
+                  <Badge variant="outline" className="text-xs">{t(`pluginScope.${selectedCommand.pluginScope}`)}</Badge>
+                )}
               </div>
+              {selectedCommand.overriddenBy && (
+                <div className="mt-3 flex items-start gap-2 text-xs rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 px-3 py-2">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{t('overriddenHint')}</span>
+                </div>
+              )}
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="overview" className="w-full">
@@ -467,6 +508,7 @@ argument-hint: [参数1] [参数2?]
                         setSelectedCommand(updatedCommand)
                         setSaveSuccess(false)
                       }}
+                      readOnly={cmdSource(selectedCommand) === 'plugin'}
                       className="min-h-[500px] font-mono text-sm"
                       placeholder={t('noInstructions')}
                     />
@@ -513,7 +555,7 @@ argument-hint: [参数1] [参数2?]
                             // 重新加载命令
                             const updatedCommands = await api.commands.getAll()
                             setCommands(updatedCommands)
-                            const updated = updatedCommands.find(c => c.name === selectedCommand.name)
+                            const updated = updatedCommands.find(c => c.filePath === selectedCommand.filePath) ?? updatedCommands.find(c => c.name === selectedCommand.name)
                             if (updated) setSelectedCommand(updated)
                             setSaveSuccess(true)
                             // 3秒后自动隐藏成功提示
@@ -525,7 +567,7 @@ argument-hint: [参数1] [参数2?]
                             setSaving(false)
                           }
                         }}
-                        disabled={saving}
+                        disabled={saving || cmdSource(selectedCommand) === 'plugin'}
                       >
                         <Save className="h-4 w-4 mr-1" />
                         {saving ? t('dialog.saving') : t('dialog.save')}

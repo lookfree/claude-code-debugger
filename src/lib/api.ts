@@ -402,11 +402,11 @@ export const api = {
         await httpPost('/api/commands/raw', { name, content, filePath })
       }
     },
-    delete: async (name: string): Promise<void> => {
+    delete: async (name: string, filePath?: string): Promise<void> => {
       if (isElectron) {
-        return window.electronAPI.deleteCommand(name)
+        return window.electronAPI.deleteCommand(name, filePath)
       } else {
-        await httpDelete(`/api/commands/${encodeURIComponent(name)}`)
+        await httpDelete(`/api/commands/${encodeURIComponent(name)}`, filePath ? { filePath } : undefined)
       }
     },
   },

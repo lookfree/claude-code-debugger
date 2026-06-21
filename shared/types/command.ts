@@ -32,8 +32,22 @@ export interface SlashCommand {
   scope: CommandScope
   enabled: boolean
   filePath?: string
+  /** @deprecated 用 source。plugin→'user' 兼容映射（spec006） */
   location?: 'user' | 'project'
+  source?: CommandSource
+  marketplace?: string // 仅 plugin
+  pluginName?: string // 仅 plugin
+  version?: string // 仅 plugin
+  pluginScope?: 'user' | 'project' // 仅 plugin
+  /** 被同名更高优先级来源覆盖时，记覆盖者 uid（spec006） */
+  overriddenBy?: string
+  /** 实际调用名：plugin 命令为 `${pluginName}:${name}`，否则 = name */
+  invokeName?: string
+  /** disallowed-tools frontmatter，由 spec008 正式解析，这里先占类型位 */
+  disallowedTools?: string[]
 }
+
+export type CommandSource = 'user' | 'project' | 'plugin'
 
 export interface CommandExecution {
   id: string

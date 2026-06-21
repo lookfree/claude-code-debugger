@@ -50,7 +50,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCommand: (name) => ipcRenderer.invoke('commands:get', name),
   saveCommand: (command) => ipcRenderer.invoke('commands:save', command),
   saveCommandRaw: (name, content, filePath) => ipcRenderer.invoke('commands:saveRaw', name, content, filePath),
-  deleteCommand: (name) => ipcRenderer.invoke('commands:delete', name),
+  deleteCommand: (name, filePath) => ipcRenderer.invoke('commands:delete', name, filePath),
 
   // CLAUDE.md
   getClaudeMD: () => ipcRenderer.invoke('claudemd:get'),

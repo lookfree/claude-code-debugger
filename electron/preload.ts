@@ -79,7 +79,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCommand: (name: string): Promise<SlashCommand | null> => ipcRenderer.invoke('commands:get', name),
   saveCommand: (command: SlashCommand): Promise<void> => ipcRenderer.invoke('commands:save', command),
   saveCommandRaw: (name: string, content: string, filePath: string): Promise<void> => ipcRenderer.invoke('commands:saveRaw', name, content, filePath),
-  deleteCommand: (name: string): Promise<void> => ipcRenderer.invoke('commands:delete', name),
+  deleteCommand: (name: string, filePath?: string): Promise<void> => ipcRenderer.invoke('commands:delete', name, filePath),
 
   // CLAUDE.md
   getClaudeMD: (): Promise<string> => ipcRenderer.invoke('claudemd:get'),
@@ -197,7 +197,7 @@ declare global {
       getCommand: (name: string) => Promise<SlashCommand | null>
       saveCommand: (command: SlashCommand) => Promise<void>
       saveCommandRaw: (name: string, content: string, filePath: string) => Promise<void>
-      deleteCommand: (name: string) => Promise<void>
+      deleteCommand: (name: string, filePath?: string) => Promise<void>
 
       // CLAUDE.md
       getClaudeMD: () => Promise<string>

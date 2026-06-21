@@ -2,7 +2,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import { watch, FSWatcher } from 'chokidar'
 import os from 'os'
-import type { Skill, SkillSource, SkillUid, InstalledPluginEntry, Agent, Hook, MCPServers, SlashCommand, ProjectContext, ConfigFile, Marketplace, MarketplaceSource, Plugin, PluginVersion, PluginManifest, PluginComponentCount } from '../../shared/types'
+import type { Skill, SkillSource, SkillUid, InstalledPluginEntry, Agent, Hook, MCPServers, SlashCommand, CommandSource, ProjectContext, ConfigFile, Marketplace, MarketplaceSource, Plugin, PluginVersion, PluginManifest, PluginComponentCount } from '../../shared/types'
 import { globScan, isMissing } from './glob-scan'
 
 export class FileManager {
@@ -357,22 +357,24 @@ export class FileManager {
   }
 
   /**
-   * 同名 skill 覆盖检测：优先级 user > project > plugin；同为 plugin 时 user-scope > project-scope，再版本号高者。
-   * winner 正常显示，其余标 overriddenBy=winner 的 uid（不丢，供 UI 灰显）。
+   * 通用同名覆盖检测：优先级 user > project > plugin；同为 plugin 时 user-scope > project-scope，再版本号高者。
+   * winner 正常显示，其余标 overriddenBy=winner 的 uid（不丢，供 UI 灰显）。skills/commands 共用（spec004/006）。
    */
-  private markSkillOverrides(skills: Skill[]): void {
-    const rankTuple = (s: Skill): [number, number, string] => [
+  private markOverrides<
+    T extends { name: string; source?: string; pluginScope?: 'user' | 'project'; version?: string; overriddenBy?: string }
+  >(items: T[], computeUid: (t: T) => string): void {
+    const rankTuple = (s: T): [number, number, string] => [
       s.source === 'user' ? 3 : s.source === 'project' ? 2 : 1,
       s.pluginScope === 'user' ? 1 : 0,
       this.semverKey(s.version),
     ]
-    const gt = (a: Skill, b: Skill): boolean => {
+    const gt = (a: T, b: T): boolean => {
       const ta = rankTuple(a), tb = rankTuple(b)
       for (let i = 0; i < 3; i++) if (ta[i] !== tb[i]) return ta[i] > tb[i]
       return false
     }
-    const byName = new Map<string, Skill[]>()
-    for (const s of skills) {
+    const byName = new Map<string, T[]>()
+    for (const s of items) {
       const g = byName.get(s.name)
       if (g) g.push(s)
       else byName.set(s.name, [s])
@@ -380,7 +382,7 @@ export class FileManager {
     for (const group of byName.values()) {
       if (group.length < 2) continue
       const winner = group.reduce((a, b) => (gt(b, a) ? b : a))
-      const winnerUid = this.computeSkillUid(winner)
+      const winnerUid = computeUid(winner)
       for (const s of group) if (s !== winner) s.overriddenBy = winnerUid
     }
   }
@@ -416,7 +418,7 @@ export class FileManager {
     }
 
     // 4) 同名覆盖检测：winner 正常、其余标 overriddenBy
-    this.markSkillOverrides(out)
+    this.markOverrides(out, (s) => this.computeSkillUid(s))
 
     this.logger.info('getSkills() returning', out.length, 'skills')
     return out
@@ -1076,77 +1078,86 @@ export class FileManager {
   }
 
   // Commands
+  /** command 稳定唯一标识：plugin 含 marketplace/plugin/version，否则 source:name（与 computeSkillUid 同构）。 */
+  private computeCommandUid(c: SlashCommand): string {
+    return c.source === 'plugin'
+      ? `plugin:${c.marketplace}/${c.pluginName}@${c.version}/${c.name}`
+      : `${c.source ?? 'user'}:${c.name}`
+  }
+
+  /**
+   * 递归扫一个 commands 根目录下的 *.md，命令名 = 相对 dir 的路径去 .md、子目录用 ':' 连（Claude Code 命名空间约定）。
+   * 兼容本工具历史写法 commands/<name>/<name>.md：尾段与父目录同名时折叠，避免出现 name:name。
+   * dir 不存在静默跳过，符号链接跳过。
+   */
+  private async scanCommandDir(
+    dir: string,
+    opts: { source: CommandSource; marketplace?: string; pluginName?: string; version?: string; pluginScope?: 'user' | 'project' },
+    out: SlashCommand[]
+  ): Promise<void> {
+    const walk = async (cur: string, prefix: string[]): Promise<void> => {
+      let entries
+      try {
+        entries = await fs.readdir(cur, { withFileTypes: true })
+      } catch (error) {
+        if (isMissing(error)) return // 目录不存在静默
+        throw error
+      }
+      for (const ent of entries) {
+        if (ent.isSymbolicLink()) continue
+        const full = path.join(cur, ent.name)
+        if (ent.isDirectory()) {
+          await walk(full, [...prefix, ent.name])
+        } else if (ent.isFile() && ent.name.endsWith('.md')) {
+          const stem = ent.name.slice(0, -3)
+          const segs = [...prefix, stem]
+          // 仅 user/project：把本工具旧写法 commands/<name>/<name>.md 折叠成 <name>；
+          // plugin 用标准平铺/命名空间布局，release/release.md 应保持 release:release，不折叠。
+          if (opts.source !== 'plugin' && segs.length >= 2 && segs[segs.length - 1] === segs[segs.length - 2]) segs.pop()
+          const commandName = segs.join(':')
+          try {
+            const content = await fs.readFile(full, 'utf-8')
+            const command = this.parseCommandMarkdown(full, content, { ...opts, commandName })
+            if (command) out.push(command)
+          } catch (error) {
+            this.logger.error(`Error reading command file ${full}:`, error)
+          }
+        }
+      }
+    }
+    await walk(dir, [])
+  }
+
   async getCommands(): Promise<SlashCommand[]> {
     this.logger.info('getCommands() called')
+    const out: SlashCommand[] = []
 
-    const commands: SlashCommand[] = []
+    await this.scanCommandDir(path.join(this.userConfigPath, 'commands'), { source: 'user' }, out)
+    await this.scanCommandDir(path.join(this.projectPath, '.claude', 'commands'), { source: 'project' }, out)
 
-    // Scan project commands
-    const projectCommandsPath = path.join(this.projectPath, '.claude', 'commands')
-    this.logger.info('Scanning project commands at:', projectCommandsPath)
-    try {
-      const projectDirs = await fs.readdir(projectCommandsPath)
-      for (const dir of projectDirs) {
-        const cmdDir = path.join(projectCommandsPath, dir)
-        const stat = await fs.stat(cmdDir).catch(() => null)
-        if (stat?.isDirectory()) {
-          const mdPath = path.join(cmdDir, `${dir}.md`)
-          try {
-            const content = await fs.readFile(mdPath, 'utf-8')
-            const command = this.parseCommandMarkdown(mdPath, content, 'project')
-            if (command) {
-              this.logger.info('Parsed project command:', command.name)
-              commands.push(command)
-            }
-          } catch (error) {
-            if (!isMissing(error)) {
-              this.logger.error(`Error reading command file ${mdPath}:`, error)
-            }
-            // 命令目录里 .md 文件名与目录名不一致时，按缺失静默跳过（spec006 修正约定）
-          }
-        }
-      }
-    } catch (error) {
-      this.logger.info('No project commands found:', error)
+    // plugin：installed_plugins.json 为准只扫激活版本，按 enabledPlugins 跳过显式禁用的
+    const enabled = await this.readEnabledPlugins()
+    for (const pl of await this.readInstalledPlugins()) {
+      if (enabled[`${pl.pluginName}@${pl.marketplace}`] === false) continue
+      await this.scanCommandDir(path.join(pl.installPath, 'commands'), {
+        source: 'plugin',
+        marketplace: pl.marketplace,
+        pluginName: pl.pluginName,
+        version: pl.version,
+        pluginScope: pl.scope,
+      }, out)
     }
 
-    // Scan user commands
-    const userCommandsPath = path.join(this.userConfigPath, 'commands')
-    this.logger.info('Scanning user commands at:', userCommandsPath)
-    try {
-      const userDirs = await fs.readdir(userCommandsPath)
-      for (const dir of userDirs) {
-        const cmdDir = path.join(userCommandsPath, dir)
-        const stat = await fs.stat(cmdDir).catch(() => null)
-        if (stat?.isDirectory()) {
-          const mdPath = path.join(cmdDir, `${dir}.md`)
-          try {
-            const content = await fs.readFile(mdPath, 'utf-8')
-            const command = this.parseCommandMarkdown(mdPath, content, 'user')
-            if (command) {
-              this.logger.info('Parsed user command:', command.name)
-              commands.push(command)
-            }
-          } catch (error) {
-            if (!isMissing(error)) {
-              this.logger.error(`Error reading command file ${mdPath}:`, error)
-            }
-            // 命令目录里 .md 文件名与目录名不一致时，按缺失静默跳过（spec006 修正约定）
-          }
-        }
-      }
-    } catch (error) {
-      this.logger.info('No user commands found:', error)
-    }
-
-    this.logger.info('Returning', commands.length, 'commands')
-    return commands
+    // 同名覆盖检测：winner 正常、其余标 overriddenBy
+    this.markOverrides(out, (c) => this.computeCommandUid(c))
+    this.logger.info('getCommands() returning', out.length, 'commands')
+    return out
   }
 
   private parseCommandMarkdown(
     filePath: string,
     content: string,
-    location: 'user' | 'project'
+    opts: { source: CommandSource; marketplace?: string; pluginName?: string; version?: string; pluginScope?: 'user' | 'project'; commandName: string }
   ): SlashCommand | null {
     try {
       // Extract frontmatter
@@ -1163,7 +1174,7 @@ export class FileManager {
         })
       }
 
-      const commandName = path.basename(path.dirname(filePath))
+      const commandName = opts.commandName
       const description = frontmatter.description || 'No description'
 
       // Extract instructions (everything after frontmatter)
@@ -1192,10 +1203,16 @@ export class FileManager {
         },
         instructions,
         rawContent: content,
-        scope: location === 'user' ? 'global' : 'project',
+        scope: opts.source === 'project' ? 'project' : 'global',
         enabled: true,
         filePath,
-        location
+        location: opts.source === 'project' ? 'project' : 'user', // 兼容旧字段（plugin/user→'user'）
+        source: opts.source,
+        marketplace: opts.marketplace,
+        pluginName: opts.pluginName,
+        version: opts.version,
+        pluginScope: opts.pluginScope,
+        invokeName: opts.source === 'plugin' ? `${opts.pluginName}:${commandName}` : commandName,
       }
     } catch (error) {
       this.logger.error('Error parsing command markdown:', error)
@@ -1205,7 +1222,18 @@ export class FileManager {
 
   async getCommand(name: string): Promise<SlashCommand | null> {
     const commands = await this.getCommands()
-    return commands.find((c) => c.name === name) || null
+    // 优先返回未被覆盖的 winner（同名多来源时），无则任意一条
+    return commands.find((c) => c.name === name && !c.overriddenBy) || commands.find((c) => c.name === name) || null
+  }
+
+  /** filePath 是否落在某个已装 plugin 的 installPath 内（plugin 命令只读护栏，禁止写/删 plugin 自带文件）。 */
+  private async isPluginPath(filePath: string): Promise<boolean> {
+    if (!filePath) return false
+    const resolved = path.resolve(filePath)
+    for (const pl of await this.readInstalledPlugins()) {
+      if (resolved.startsWith(path.resolve(pl.installPath) + path.sep)) return true
+    }
+    return false
   }
 
   async saveCommand(command: SlashCommand): Promise<void> {
@@ -1307,6 +1335,9 @@ export class FileManager {
     if (!filePath) {
       throw new Error('File path is required for saving raw command content')
     }
+    if (await this.isPluginPath(filePath)) {
+      throw new Error('Plugin commands are read-only and cannot be edited')
+    }
 
     // 确保目录存在
     const dir = path.dirname(filePath)
@@ -1317,14 +1348,18 @@ export class FileManager {
     this.logger.info('Saved raw command to:', filePath)
   }
 
-  async deleteCommand(name: string): Promise<void> {
-    const command = await this.getCommand(name)
-    if (command?.filePath) {
+  async deleteCommand(name: string, filePath?: string): Promise<void> {
+    // 优先用调用方传入的精确 filePath（同名命令可来自多来源，仅按 name 解析会删错文件）；缺省回退按 name 查 winner。
+    const targetPath = filePath || (await this.getCommand(name))?.filePath
+    if (targetPath) {
+      if (await this.isPluginPath(targetPath)) {
+        throw new Error('Plugin commands are read-only and cannot be deleted')
+      }
       // 删除命令文件
-      await fs.unlink(command.filePath)
+      await fs.unlink(targetPath)
 
       // 同时删除命令目录（如果目录为空）
-      const commandDir = path.dirname(command.filePath)
+      const commandDir = path.dirname(targetPath)
       try {
         const files = await fs.readdir(commandDir)
         if (files.length === 0) {
