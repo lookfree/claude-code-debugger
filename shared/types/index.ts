@@ -8,6 +8,7 @@ export * from './provider'
 export * from './plugin'
 export * from './permission'
 export * from './settings'
+export * from './worktree'
 
 export interface ConfigFile {
   path: string

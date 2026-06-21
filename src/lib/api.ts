@@ -18,6 +18,7 @@ import type {
   SettingsModel,
   SettingsLevel,
   SafetyToggles,
+  WorktreeConfig,
 } from '@shared/types'
 
 // Detect if running in Electron
@@ -653,6 +654,14 @@ export const api = {
     getToggles: async (): Promise<SafetyToggles> => {
       if (isElectron) return window.electronAPI.getSafetyToggles()
       return httpGet<SafetyToggles>('/api/settings/toggles')
+    },
+    getWorktree: async (): Promise<WorktreeConfig> => {
+      if (isElectron) return window.electronAPI.getWorktreeConfig()
+      return httpGet<WorktreeConfig>('/api/settings/worktree')
+    },
+    setWorktreeKey: async (level: SettingsLevel, key: 'baseRef' | 'bgIsolation', value: string | undefined): Promise<void> => {
+      if (isElectron) return window.electronAPI.setWorktreeKey(level, key, value)
+      throw new Error('Editing settings is only available in the desktop app')
     },
   },
 

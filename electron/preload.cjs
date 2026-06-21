@@ -101,7 +101,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Settings (统一写入层 spec009)
   getSettingsModel: () => ipcRenderer.invoke('settings:getModel'),
   setSettingKey: (level, keyPath, value) => ipcRenderer.invoke('settings:setKey', level, keyPath, value),
-  getSafetyToggles: () => ipcRenderer.invoke('settings:getToggles')
+  getSafetyToggles: () => ipcRenderer.invoke('settings:getToggles'),
+  getWorktreeConfig: () => ipcRenderer.invoke('settings:getWorktree'),
+  setWorktreeKey: (level, key, value) => ipcRenderer.invoke('settings:setWorktreeKey', level, key, value)
 })
 
 console.log('[Preload] electronAPI exposed to window')

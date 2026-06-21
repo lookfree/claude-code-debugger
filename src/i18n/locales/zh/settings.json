@@ -32,6 +32,19 @@
     "cancel": "取消",
     "parseError": "值不是合法 JSON"
   },
+  "worktree": {
+    "title": "Worktree",
+    "note": "--worktree 启动隔离是 CLI flag，此处仅配置落盘的 baseRef/bgIsolation（2.1.133/2.1.143）。",
+    "targetLevel": "写入层",
+    "baseRef": "基准 ref",
+    "bgIsolation": "后台会话隔离",
+    "isolation": {
+      "none": "不隔离",
+      "noneHint": "后台会话共享当前工作区",
+      "worktree": "worktree 隔离",
+      "worktreeHint": "每个后台会话独立 git worktree"
+    }
+  },
   "toggles": {
     "title": "安全开关",
     "disableBundledSkills": "禁用内置 skill",

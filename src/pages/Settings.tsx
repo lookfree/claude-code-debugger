@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
-import type { SettingsModel, SettingsLevel, EffectiveSetting, SafetyToggles } from '@shared/types'
+import type { SettingsModel, SettingsLevel, EffectiveSetting, SafetyToggles, WorktreeConfig } from '@shared/types'
+import { BG_ISOLATION_OPTIONS } from '@shared/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -54,10 +55,18 @@ export default function Settings() {
   const [editValue, setEditValue] = useState('')
   const [editError, setEditError] = useState('')
 
+  const [worktree, setWorktree] = useState<WorktreeConfig | null>(null)
+  const [wtLevel, setWtLevel] = useState<SettingsLevel>('project')
+  const [baseRefDraft, setBaseRefDraft] = useState('')
+
   const load = async () => {
-    const [m, tg] = await Promise.all([api.settings.getModel(), api.settings.getToggles()])
+    const [m, tg, wt] = await Promise.all([api.settings.getModel(), api.settings.getToggles(), api.settings.getWorktree()])
     setModel(m)
     setToggles(tg)
+    setWorktree(wt)
+    setBaseRefDraft(wt.baseRef ?? '')
+    // 默认写入层对齐当前值的来源层（否则在 project 写而值来自 user，徽章会突变、看似没改对）
+    setWtLevel(wt.sources?.baseRef ?? wt.sources?.bgIsolation ?? 'project')
   }
   useEffect(() => {
     load()
@@ -110,6 +119,16 @@ export default function Settings() {
     const target = toggles?.disableBundledSkillsSource ?? 'user'
     await api.settings.setKey(target, 'disableBundledSkills', checked)
     await load()
+  }
+
+  const saveWorktree = async (key: 'baseRef' | 'bgIsolation', value: string | undefined) => {
+    await api.settings.setWorktreeKey(wtLevel, key, value)
+    await load()
+  }
+  const saveBaseRef = async () => {
+    const v = baseRefDraft.trim()
+    if (v === (worktree?.baseRef ?? '')) return // 无变化不写
+    await saveWorktree('baseRef', v || undefined)
   }
 
   // 只展示「叶子 + 非对象顶层」，跳过会展开成叶子的父对象，避免一坨大对象塞表格
@@ -212,6 +231,66 @@ export default function Settings() {
             <div className="rounded-md border border-border px-3 py-2">
               <div className="text-sm font-medium">{t('toggles.cd')}</div>
               <p className="text-xs text-muted-foreground mt-1">{t('toggles.cdDesc')}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Worktree (spec011) */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-base">{t('worktree.title')}</CardTitle>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">{t('worktree.targetLevel')}</span>
+                <LevelSelect value={wtLevel} onChange={setWtLevel} className="w-28 h-8" />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">{t('worktree.note')}</p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Label className="text-xs">{t('worktree.baseRef')}</Label>
+                {worktree?.sources?.baseRef && (
+                  <Badge variant="outline" className={cn('text-[10px]', LEVEL_BADGE[worktree.sources.baseRef])}>
+                    {t(`levels.${worktree.sources.baseRef}`)}
+                  </Badge>
+                )}
+              </div>
+              <Input
+                className="md:w-80 font-mono"
+                value={baseRefDraft}
+                placeholder="main"
+                onChange={(e) => setBaseRefDraft(e.target.value)}
+                onBlur={saveBaseRef}
+                onKeyDown={(e) => e.key === 'Enter' && saveBaseRef()}
+              />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Label className="text-xs">{t('worktree.bgIsolation')}</Label>
+                {worktree?.sources?.bgIsolation && (
+                  <Badge variant="outline" className={cn('text-[10px]', LEVEL_BADGE[worktree.sources.bgIsolation])}>
+                    {t(`levels.${worktree.sources.bgIsolation}`)}
+                  </Badge>
+                )}
+              </div>
+              <Select
+                value={worktree?.bgIsolation ?? ''}
+                onValueChange={(v) => saveWorktree('bgIsolation', v)}
+              >
+                <SelectTrigger className="md:w-80"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  {BG_ISOLATION_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      <div className="flex flex-col">
+                        <span>{t(o.labelKey)}</span>
+                        <span className="text-xs text-muted-foreground">{t(o.hintKey)}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </CardContent>
         </Card>

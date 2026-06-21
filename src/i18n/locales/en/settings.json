@@ -32,6 +32,19 @@
     "cancel": "Cancel",
     "parseError": "Value is not valid JSON"
   },
+  "worktree": {
+    "title": "Worktree",
+    "note": "--worktree launch isolation is a CLI flag; this only configures the on-disk baseRef/bgIsolation (2.1.133/2.1.143).",
+    "targetLevel": "Write to",
+    "baseRef": "Base ref",
+    "bgIsolation": "Background isolation",
+    "isolation": {
+      "none": "No isolation",
+      "noneHint": "Background sessions share the current workspace",
+      "worktree": "Worktree isolation",
+      "worktreeHint": "Each background session gets its own git worktree"
+    }
+  },
   "toggles": {
     "title": "Safety switches",
     "disableBundledSkills": "Disable bundled skills",

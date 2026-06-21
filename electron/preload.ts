@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Skill, Agent, Hook, HookSettingsMatcher, MCPServers, MCPServerConfig, SlashCommand, ProjectContext, ConfigFile, Provider, HookExecutionLog, Marketplace, Plugin, PluginCliResult, PermissionModel, PermissionLevel, PermissionEffect, SettingsModel, SettingsLevel, SafetyToggles } from '../shared/types'
+import type { Skill, Agent, Hook, HookSettingsMatcher, MCPServers, MCPServerConfig, SlashCommand, ProjectContext, ConfigFile, Provider, HookExecutionLog, Marketplace, Plugin, PluginCliResult, PermissionModel, PermissionLevel, PermissionEffect, SettingsModel, SettingsLevel, SafetyToggles, WorktreeConfig } from '../shared/types'
 
 console.log('[Preload] Script is loading...')
 
@@ -135,6 +135,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setSettingKey: (level: SettingsLevel, keyPath: string, value: unknown): Promise<void> =>
     ipcRenderer.invoke('settings:setKey', level, keyPath, value),
   getSafetyToggles: (): Promise<SafetyToggles> => ipcRenderer.invoke('settings:getToggles'),
+  getWorktreeConfig: (): Promise<WorktreeConfig> => ipcRenderer.invoke('settings:getWorktree'),
+  setWorktreeKey: (level: SettingsLevel, key: 'baseRef' | 'bgIsolation', value: string | undefined): Promise<void> =>
+    ipcRenderer.invoke('settings:setWorktreeKey', level, key, value),
 })
 
 console.log('[Preload] electronAPI exposed to window')
@@ -260,6 +263,8 @@ declare global {
       getSettingsModel: () => Promise<SettingsModel>
       setSettingKey: (level: SettingsLevel, keyPath: string, value: unknown) => Promise<void>
       getSafetyToggles: () => Promise<SafetyToggles>
+      getWorktreeConfig: () => Promise<WorktreeConfig>
+      setWorktreeKey: (level: SettingsLevel, key: 'baseRef' | 'bgIsolation', value: string | undefined) => Promise<void>
     }
   }
 }

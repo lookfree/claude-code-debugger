@@ -155,6 +155,10 @@ app.get('/api/settings/toggles', asyncHandler(async (_req, res) => {
   res.json(await fileManager.getSafetyToggles())
 }))
 
+app.get('/api/settings/worktree', asyncHandler(async (_req, res) => {
+  res.json(await fileManager.getWorktreeConfig())
+}))
+
 app.delete('/api/hooks/:name', asyncHandler(async (req, res) => {
   await fileManager.deleteHook(req.params.name)
   res.json({ success: true })
