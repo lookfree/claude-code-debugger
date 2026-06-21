@@ -1,0 +1,28 @@
+{
+  "title": "Agents",
+  "description": "Browse Claude Code subagents (.md + YAML frontmatter)",
+  "search": "Search agents...",
+  "empty": "No agents found",
+  "noSelection": "Select an agent to view details",
+  "filter": {
+    "all": "All",
+    "user": "User",
+    "project": "Project",
+    "plugin": "Plugin"
+  },
+  "overridden": "Overridden",
+  "overriddenHint": "This agent is overridden by a same-named higher-priority source and won't take effect.",
+  "detail": {
+    "systemPrompt": "System prompt",
+    "tools": "Tools",
+    "toolsInherit": "Inherits all tools",
+    "model": "Model override",
+    "modelDefault": "Session default model",
+    "filePath": "File path",
+    "readOnly": "Read-only"
+  },
+  "teams": {
+    "title": "Agent Teams",
+    "note": "Agent Teams collapsed into implicit session presence in 2.1.178 (no more TeamCreate/TeamDelete). This page only browses agent config (.md files); team runtime orchestration (tmux teammate panes) is a session runtime concern, not configuration."
+  }
+}

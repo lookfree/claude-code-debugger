@@ -1,0 +1,28 @@
+{
+  "title": "子代理",
+  "description": "浏览 Claude Code subagent（.md + YAML frontmatter）",
+  "search": "搜索子代理...",
+  "empty": "没有找到子代理",
+  "noSelection": "选择一个子代理查看详情",
+  "filter": {
+    "all": "全部",
+    "user": "用户",
+    "project": "项目",
+    "plugin": "插件"
+  },
+  "overridden": "被覆盖",
+  "overriddenHint": "此子代理被同名的更高优先级来源覆盖，不会生效。",
+  "detail": {
+    "systemPrompt": "System Prompt",
+    "tools": "工具",
+    "toolsInherit": "继承全部工具",
+    "model": "模型覆盖",
+    "modelDefault": "会话默认模型",
+    "filePath": "文件路径",
+    "readOnly": "只读"
+  },
+  "teams": {
+    "title": "Agent Teams",
+    "note": "Agent Teams 自 2.1.178 收缩为 session 隐式存在，不再有 TeamCreate/TeamDelete。本页只浏览 agent 配置（.md 文件）；team 的运行时编排（tmux teammate panes）属会话运行时，不在配置层管理。"
+  }
+}

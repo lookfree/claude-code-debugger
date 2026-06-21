@@ -14,6 +14,7 @@ import skillsEn from './locales/en/skills.json'
 import pluginsEn from './locales/en/plugins.json'
 import permissionsEn from './locales/en/permissions.json'
 import settingsEn from './locales/en/settings.json'
+import agentsEn from './locales/en/agents.json'
 
 import commonZh from './locales/zh/common.json'
 import layoutZh from './locales/zh/layout.json'
@@ -25,6 +26,7 @@ import skillsZh from './locales/zh/skills.json'
 import pluginsZh from './locales/zh/plugins.json'
 import permissionsZh from './locales/zh/permissions.json'
 import settingsZh from './locales/zh/settings.json'
+import agentsZh from './locales/zh/agents.json'
 
 export const resources = {
   en: {
@@ -38,6 +40,7 @@ export const resources = {
     plugins: pluginsEn,
     permissions: permissionsEn,
     settings: settingsEn,
+    agents: agentsEn,
   },
   zh: {
     common: commonZh,
@@ -50,6 +53,7 @@ export const resources = {
     plugins: pluginsZh,
     permissions: permissionsZh,
     settings: settingsZh,
+    agents: agentsZh,
   },
 } as const
 
