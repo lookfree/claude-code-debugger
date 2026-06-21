@@ -103,7 +103,7 @@ export function SessionList({ summaries, selectedIds, compareMode, onSelect, onT
                     {t('waitingFor', { tool: s.waitingFor })}
                   </Badge>
                 )}
-                <span>{compactNum(s.totalTokens.totalTokens)} tok</span>
+                <span>{t('tokens', { n: compactNum(s.totalTokens.totalTokens) })}</span>
                 {s.hasSubagents && <Network className="w-3 h-3" />}
               </div>
             </button>

@@ -8,6 +8,7 @@
   "compareEmpty": "从列表勾选最多 3 个 session 比对时间线",
   "compareHint": "最多多选 {{max}} 个 session，时间线共享同一对齐时间轴",
   "waitingFor": "在等：{{tool}}",
+  "tokens": "{{n}} tok",
   "filter": {
     "all": "全部"
   },

@@ -8,6 +8,7 @@
   "compareEmpty": "Pick up to 3 sessions from the list to compare their timelines",
   "compareHint": "Multi-select up to {{max}} sessions; timelines share one aligned time axis",
   "waitingFor": "waiting: {{tool}}",
+  "tokens": "{{n}} tok",
   "filter": {
     "all": "All"
   },

@@ -1,7 +1,10 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { SessionEvent } from '@shared/types'
 import { cn } from '@/lib/utils'
 import { KIND_COLOR } from './sessionStatus'
+
+type TFn = (k: string, o?: Record<string, unknown>) => string
 
 interface Domain {
   minMs: number
@@ -39,6 +42,7 @@ function effectiveTimes(events: SessionEvent[]): Array<{ event: SessionEvent; ms
 }
 
 export function SessionTimeline({ events, domain, onSeek, label }: Props) {
+  const { t } = useTranslation('sessions')
   const { placed, resultX } = useMemo(() => {
     const timed = effectiveTimes(events)
     const min = domain?.minMs ?? Math.min(...timed.map((o) => o.ms))
@@ -75,7 +79,7 @@ export function SessionTimeline({ events, domain, onSeek, label }: Props) {
           <button
             key={`tick-${p.event.seq}`}
             onClick={() => onSeek?.(p.event.seq)}
-            title={tickTitle(p.event)}
+            title={tickTitle(p.event, t)}
             className={cn(
               'absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-2 rounded-full hover:ring-2 hover:ring-offset-1 hover:ring-foreground/30',
               KIND_COLOR[p.event.kind]
@@ -88,16 +92,16 @@ export function SessionTimeline({ events, domain, onSeek, label }: Props) {
   )
 }
 
-function tickTitle(e: SessionEvent): string {
+function tickTitle(e: SessionEvent, t: TFn): string {
   switch (e.kind) {
     case 'tool_use':
-      return `tool_use: ${e.toolName}`
+      return `${t('card.toolUse')}: ${e.toolName}`
     case 'tool_result':
-      return e.isError ? 'tool_result (error)' : 'tool_result'
+      return t(e.isError ? 'card.toolError' : 'card.toolResult')
     case 'assistant_turn':
-      return `assistant${e.model ? ` · ${e.model}` : ''}`
+      return `${t('card.assistant')}${e.model ? ` · ${e.model}` : ''}`
     case 'user_turn':
-      return 'user'
+      return t('card.user')
     default:
       return e.kind
   }
