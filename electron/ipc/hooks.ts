@@ -1,21 +1,11 @@
 import type { IpcMain } from 'electron'
 import type { FileManager } from '../services/file-manager'
-import type { Hook, HookExecutionLog } from '../../shared/types'
+import type { Hook, HookExecutionLog, HookSettingsMatcher } from '../../shared/types'
+import { validateHook } from '../services/hook-validation'
 import { spawn } from 'child_process'
 import path from 'path'
 import os from 'os'
 import fs from 'fs/promises'
-
-// Claude Code native hook format
-interface ClaudeCodeHookConfig {
-  matcher?: string
-  hooks: Array<{
-    type: 'command' | 'prompt'
-    command?: string
-    prompt?: string
-    timeout?: number
-  }>
-}
 
 // In-memory storage for execution logs (limited to last 100 entries)
 let executionLogs: HookExecutionLog[] = []
@@ -320,12 +310,17 @@ export function registerHookHandlers(ipcMain: IpcMain, fileManager: FileManager)
   ipcMain.handle('hooks:saveToSettings', async (
     _event,
     hookType: string,
-    hookConfig: ClaudeCodeHookConfig,
+    hookConfig: HookSettingsMatcher,
     location: 'user' | 'project',
     projectPath?: string,
     matcherIndex?: number
   ) => {
     await fileManager.saveHookToSettings(hookType, hookConfig, location, projectPath, matcherIndex)
+  })
+
+  // ajv 校验 hook（前端保存前调；服务端 saveHookToSettings 也会再校验一遍）
+  ipcMain.handle('hooks:validate', async (_event, hook: Hook) => {
+    return validateHook(hook)
   })
 
   ipcMain.handle('hooks:delete', async (_event, name: string) => {
@@ -438,8 +433,28 @@ export function registerHookHandlers(ipcMain: IpcMain, fileManager: FileManager)
           testPrompt = 'Use the Task tool to search for README files in this project'
           break
         case 'PreCompact':
-          // PreCompact triggers before conversation compaction
-          testPrompt = 'This is a test for PreCompact hook. Please respond briefly.'
+        case 'PostCompact':
+          // Compaction hooks trigger before/after conversation compaction（需较长对话手动触发更可靠）
+          testPrompt = 'This is a test for compaction hooks. Please respond briefly.'
+          break
+        case 'MessageDisplay':
+          // 输出显示前转换/隐藏：任意回复都会触发
+          testPrompt = 'Reply with a short sentence to test MessageDisplay hook'
+          break
+        case 'StopFailure':
+          // Stop 失败：需 Stop hook 阻断失败才触发，dry-run 仅识别类型
+          testPrompt = 'Count from 1 to 5 (StopFailure requires a blocking Stop hook to trigger)'
+          break
+        case 'PermissionRequest':
+          // 权限请求：触发一次需授权的工具
+          testPrompt = 'Run the shell command: echo hello'
+          break
+        case 'ConfigChange':
+        case 'Elicitation':
+        case 'ElicitationResult':
+        case 'PostSession':
+          // 这些事件由配置变更/交互征询/会话生命周期触发，dry-run 仅识别类型，需手动触发
+          testPrompt = 'Hello, this hook type needs a real trigger; this is a type-recognition test'
           break
         default:
           // Fallback for any unhandled hook types

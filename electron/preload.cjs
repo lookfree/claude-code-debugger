@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveHookRaw: (name, content, filePath) => ipcRenderer.invoke('hooks:saveRaw', name, content, filePath),
   saveHookToSettings: (hookType, hookConfig, location, projectPath, matcherIndex) =>
     ipcRenderer.invoke('hooks:saveToSettings', hookType, hookConfig, location, projectPath, matcherIndex),
+  validateHook: (hook) => ipcRenderer.invoke('hooks:validate', hook),
   deleteHook: (name) => ipcRenderer.invoke('hooks:delete', name),
   deleteHookFromSettings: (hookType, matcherIndex, location, projectPath) =>
     ipcRenderer.invoke('hooks:deleteFromSettings', hookType, matcherIndex, location, projectPath),

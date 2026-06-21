@@ -29,6 +29,38 @@
       "title": "Post Tool Use",
       "description": "After a tool has completed"
     },
+    "MessageDisplay": {
+      "title": "Message Display",
+      "description": "Transform or hide output before it is displayed"
+    },
+    "StopFailure": {
+      "title": "Stop Failure",
+      "description": "When a Stop hook fails"
+    },
+    "PostCompact": {
+      "title": "Post Compact",
+      "description": "After conversation compaction"
+    },
+    "ConfigChange": {
+      "title": "Config Change",
+      "description": "Audit configuration changes"
+    },
+    "Elicitation": {
+      "title": "Elicitation",
+      "description": "When Claude elicits input from the user"
+    },
+    "ElicitationResult": {
+      "title": "Elicitation Result",
+      "description": "When an elicitation returns a result"
+    },
+    "PermissionRequest": {
+      "title": "Permission Request",
+      "description": "Automate permission requests"
+    },
+    "PostSession": {
+      "title": "Post Session",
+      "description": "After a session ends (post-session lifecycle)"
+    },
     "Notification": {
       "title": "Notification",
       "description": "When a notification is displayed"
@@ -61,6 +93,14 @@
       "title": "Session End",
       "description": "When a session is ending"
     }
+  },
+  "groups": {
+    "tool": "Tool",
+    "session": "Session",
+    "lifecycle": "Lifecycle",
+    "compaction": "Compaction",
+    "audit": "Audit",
+    "interaction": "Interaction"
   },
   "tabs": {
     "details": "Details",
@@ -168,7 +208,32 @@
     "scriptContentHint": "The script will be created with executable permissions",
     "preview": "Configuration Preview",
     "previewHint": "This configuration will be saved to settings.json",
-    "scriptWillBeCreated": "Script file(s) will be created automatically"
+    "scriptWillBeCreated": "Script file(s) will be created automatically",
+    "typeHttp": "HTTP",
+    "url": "URL",
+    "method": "Method",
+    "headers": "Headers",
+    "addHeader": "Add Header",
+    "headerKey": "Header name",
+    "headerValue": "Header value",
+    "body": "Body",
+    "bodyPlaceholder": "Request body template (supports ${...}); leave empty to send full hook input JSON",
+    "args": "Arguments (exec form)",
+    "addArg": "Add Arg",
+    "advanced": "Advanced",
+    "continueOnError": "Continue on Error",
+    "continueOnBlock": "Continue on Block",
+    "terminalSequence": "Terminal Sequence",
+    "terminalSequencePlaceholder": "Escape sequence written to terminal on trigger",
+    "typeSpecific": "Type-specific options",
+    "reloadSkills": "Reload skills on session start",
+    "sessionTitle": "Session Title",
+    "sessionTitlePlaceholder": "Preset session title",
+    "maxBlocks": "Max Blocks",
+    "maxBlocksHint": "Stop-hook block count limit (default 8)",
+    "replaceToolOutput": "Replace tool output for Claude",
+    "effort": "Effort",
+    "effortReadOnly": "read-only"
   },
   "deleteDialog": {
     "title": "Delete Hook",

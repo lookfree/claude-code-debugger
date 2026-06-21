@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express'
 import cors from 'cors'
 import path from 'path'
 import { FileManager } from '../electron/services/file-manager'
+import { validateHook } from '../electron/services/hook-validation'
 import type { Skill, Agent, Hook, MCPServerConfig, SlashCommand, Provider } from '../shared/types'
 
 const app = express()
@@ -115,6 +116,10 @@ app.post('/api/hooks/settings', asyncHandler(async (req, res) => {
   const { hookType, hookConfig, location, projectPath, matcherIndex } = req.body
   await fileManager.saveHookToSettings(hookType, hookConfig, location, projectPath, matcherIndex)
   res.json({ success: true })
+}))
+
+app.post('/api/hooks/validate', asyncHandler(async (req, res) => {
+  res.json(validateHook(req.body.hook))
 }))
 
 app.delete('/api/hooks/:name', asyncHandler(async (req, res) => {

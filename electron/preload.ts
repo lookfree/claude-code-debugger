@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Skill, Agent, Hook, MCPServers, MCPServerConfig, SlashCommand, ProjectContext, ConfigFile, Provider, HookExecutionLog, Marketplace, Plugin, PluginCliResult } from '../shared/types'
+import type { Skill, Agent, Hook, HookSettingsMatcher, MCPServers, MCPServerConfig, SlashCommand, ProjectContext, ConfigFile, Provider, HookExecutionLog, Marketplace, Plugin, PluginCliResult } from '../shared/types'
 
 console.log('[Preload] Script is loading...')
 
@@ -25,11 +25,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveHookRaw: (name: string, content: string, filePath: string): Promise<void> => ipcRenderer.invoke('hooks:saveRaw', name, content, filePath),
   saveHookToSettings: (
     hookType: string,
-    hookConfig: { matcher?: string; hooks: Array<{ type: string; command?: string; prompt?: string; timeout?: number }> },
+    hookConfig: HookSettingsMatcher,
     location: 'user' | 'project',
     projectPath?: string,
     matcherIndex?: number
   ): Promise<void> => ipcRenderer.invoke('hooks:saveToSettings', hookType, hookConfig, location, projectPath, matcherIndex),
+  validateHook: (hook: Hook): Promise<{ valid: boolean; errors: string[] }> => ipcRenderer.invoke('hooks:validate', hook),
   deleteHook: (name: string): Promise<void> => ipcRenderer.invoke('hooks:delete', name),
   deleteHookFromSettings: (
     hookType: string,
@@ -145,11 +146,12 @@ declare global {
       saveHookRaw: (name: string, content: string, filePath: string) => Promise<void>
       saveHookToSettings: (
         hookType: string,
-        hookConfig: { matcher?: string; hooks: Array<{ type: string; command?: string; prompt?: string; timeout?: number }> },
+        hookConfig: HookSettingsMatcher,
         location: 'user' | 'project',
         projectPath?: string,
         matcherIndex?: number
       ) => Promise<void>
+      validateHook: (hook: Hook) => Promise<{ valid: boolean; errors: string[] }>
       deleteHook: (name: string) => Promise<void>
       deleteHookFromSettings: (
         hookType: string,

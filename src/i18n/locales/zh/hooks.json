@@ -29,6 +29,38 @@
       "title": "工具调用后",
       "description": "在工具完成之后触发"
     },
+    "MessageDisplay": {
+      "title": "消息显示",
+      "description": "在输出显示前转换或隐藏"
+    },
+    "StopFailure": {
+      "title": "停止失败",
+      "description": "当 Stop 钩子失败时触发"
+    },
+    "PostCompact": {
+      "title": "压缩后",
+      "description": "在对话压缩之后触发"
+    },
+    "ConfigChange": {
+      "title": "配置变更",
+      "description": "配置变更审计"
+    },
+    "Elicitation": {
+      "title": "交互征询",
+      "description": "当 Claude 向用户征询输入时触发"
+    },
+    "ElicitationResult": {
+      "title": "征询结果",
+      "description": "当征询返回结果时触发"
+    },
+    "PermissionRequest": {
+      "title": "权限请求",
+      "description": "权限请求自动化"
+    },
+    "PostSession": {
+      "title": "会话之后",
+      "description": "会话结束之后（post-session 生命周期）"
+    },
     "Notification": {
       "title": "通知",
       "description": "当显示通知时触发"
@@ -61,6 +93,14 @@
       "title": "会话结束",
       "description": "当会话即将结束时触发"
     }
+  },
+  "groups": {
+    "tool": "工具类",
+    "session": "会话类",
+    "lifecycle": "生命周期",
+    "compaction": "压缩类",
+    "audit": "审计类",
+    "interaction": "交互类"
   },
   "tabs": {
     "details": "详情",
@@ -168,7 +208,32 @@
     "scriptContentHint": "脚本将以可执行权限创建",
     "preview": "配置预览",
     "previewHint": "此配置将保存到 settings.json",
-    "scriptWillBeCreated": "脚本文件将自动创建"
+    "scriptWillBeCreated": "脚本文件将自动创建",
+    "typeHttp": "HTTP",
+    "url": "URL",
+    "method": "请求方法",
+    "headers": "请求头",
+    "addHeader": "添加请求头",
+    "headerKey": "请求头名称",
+    "headerValue": "请求头值",
+    "body": "请求体",
+    "bodyPlaceholder": "请求体模板（支持 ${...} 占位）；留空则发送完整 hook 输入 JSON",
+    "args": "参数（exec 形式）",
+    "addArg": "添加参数",
+    "advanced": "高级",
+    "continueOnError": "出错时继续",
+    "continueOnBlock": "被阻断时继续",
+    "terminalSequence": "终端转义序列",
+    "terminalSequencePlaceholder": "触发时写入终端的转义序列",
+    "typeSpecific": "类型专属选项",
+    "reloadSkills": "会话开始时重新加载 skills",
+    "sessionTitle": "会话标题",
+    "sessionTitlePlaceholder": "预设会话标题",
+    "maxBlocks": "最大阻断次数",
+    "maxBlocksHint": "stop-hook 阻断次数上限（默认 8）",
+    "replaceToolOutput": "替换工具输出供 Claude 查看",
+    "effort": "Effort 级别",
+    "effortReadOnly": "只读"
   },
   "deleteDialog": {
     "title": "删除钩子",

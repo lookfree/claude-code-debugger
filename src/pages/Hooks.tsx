@@ -1,18 +1,23 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
-import type { Hook, HookType, HookExecutionLog } from '@shared/types'
+import type { Hook, HookType, HookExecutionLog, HookAction, HookSettingsMatcher } from '@shared/types'
+import { HookActionForm, makeEmptyAction } from './hooks/HookActionForm'
+import type { HookActionItem } from './hooks/HookActionForm'
+import { HookTypePanels } from './hooks/HookTypePanels'
+import type { HookTypeFields } from './hooks/HookTypePanels'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -54,29 +59,23 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const HOOK_TYPES: HookType[] = [
-  'PreToolUse',
-  'PostToolUse',
-  'Notification',
-  'UserPromptSubmit',
-  'Stop',
-  'SubagentStart',
-  'SubagentStop',
-  'PreCompact',
-  'SessionStart',
-  'SessionEnd',
+// Hook event types grouped by domain for the Select dropdown.
+const HOOK_TYPE_GROUPS: Array<{ group: string; types: HookType[] }> = [
+  { group: 'tool', types: ['PreToolUse', 'PostToolUse', 'MessageDisplay'] },
+  {
+    group: 'session',
+    types: ['SessionStart', 'SessionEnd', 'PostSession', 'UserPromptSubmit', 'Notification'],
+  },
+  { group: 'lifecycle', types: ['Stop', 'StopFailure', 'SubagentStart', 'SubagentStop'] },
+  { group: 'compaction', types: ['PreCompact', 'PostCompact'] },
+  { group: 'audit', types: ['ConfigChange'] },
+  {
+    group: 'interaction',
+    types: ['Elicitation', 'ElicitationResult', 'PermissionRequest'],
+  },
 ]
 
-// Claude Code native hook format interface
-interface ClaudeCodeHookConfig {
-  matcher?: string
-  hooks: Array<{
-    type: 'command' | 'prompt'
-    command?: string
-    prompt?: string
-    timeout?: number
-  }>
-}
+const HOOK_TYPES: HookType[] = HOOK_TYPE_GROUPS.flatMap((g) => g.types)
 
 export default function Hooks() {
   const { t } = useTranslation('hooks')
@@ -96,19 +95,16 @@ export default function Hooks() {
     priority: number
     stopOnError: boolean
     pattern: string
-    rawContent: string
     // Claude Code native format fields
     matcher: string
     matcherIndex?: number // Index of the hook in settings.json for editing
-    hookCommands: Array<{
-      type: 'command' | 'prompt'
-      command: string
-      timeout: number
-      // For script files
-      useScriptFile: boolean
-      scriptPath: string
-      scriptContent: string
-    }>
+    actions: HookActionItem[]
+    // Type-specific matcher-level fields
+    reloadSkills: boolean // SessionStart
+    sessionTitle: string // SessionStart
+    maxBlocks: number // Stop / StopFailure
+    replaceToolOutput: boolean // PostToolUse
+    effort?: Hook['effort'] // read-only display
   }>({
     name: '',
     type: 'SessionStart',
@@ -119,10 +115,14 @@ export default function Hooks() {
     priority: 100,
     stopOnError: false,
     pattern: '',
-    rawContent: '',
     matcher: '',
     matcherIndex: undefined,
-    hookCommands: [{ type: 'command', command: '', timeout: 60000, useScriptFile: false, scriptPath: '', scriptContent: '' }],
+    actions: [makeEmptyAction()],
+    reloadSkills: false,
+    sessionTitle: '',
+    maxBlocks: 8,
+    replaceToolOutput: false,
+    effort: undefined,
   })
   const [saving, setSaving] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -281,44 +281,48 @@ export default function Hooks() {
       }
     }
 
-    // Convert to Claude Code native format for editing
-    const hookCommands = hook.actions?.map(action => {
-      const cmd = action.command || action.handler || ''
-      const isScript = cmd.endsWith('.sh') || cmd.startsWith('.claude/hooks/')
-      return {
-        type: 'command' as 'command' | 'prompt',
-        command: cmd,
-        timeout: action.timeout || 60000,
-        useScriptFile: isScript,
-        scriptPath: isScript ? cmd : '',
-        scriptContent: '', // Will be loaded below
+    // Convert domain HookActions into the editing model
+    const actions: HookActionItem[] = (hook.actions?.length ? hook.actions : []).map((action) => {
+      const item = makeEmptyAction()
+      // Map legacy abstract verbs to command, http/prompt stay as-is
+      const rawType = action.type
+      item.type = rawType === 'http' || rawType === 'prompt' ? rawType : 'command'
+      item.timeout = action.timeout ?? 60000
+      item.continueOnError = action.continueOnError ?? false
+      item.continueOnBlock = action.continueOnBlock ?? false
+      item.terminalSequence = action.terminalSequence ?? ''
+
+      if (item.type === 'command') {
+        const cmd = action.command || action.handler || ''
+        const isScript = cmd.endsWith('.sh') || cmd.startsWith('.claude/hooks/')
+        item.command = cmd
+        item.useScriptFile = isScript
+        item.scriptPath = isScript ? cmd : ''
+        item.args = action.args ? [...action.args] : []
+      } else if (item.type === 'http') {
+        item.url = action.url ?? ''
+        item.method = action.method ?? 'POST'
+        item.headers = action.headers
+          ? Object.entries(action.headers).map(([key, value]) => ({ key, value }))
+          : []
+        item.body = action.body ?? ''
+      } else if (item.type === 'prompt') {
+        item.prompt = action.prompt ?? ''
       }
-    }) || [{ type: 'command' as const, command: '', timeout: 60000, useScriptFile: false, scriptPath: '', scriptContent: '' }]
+      return item
+    })
+    if (actions.length === 0) actions.push(makeEmptyAction())
 
     // Load script content for each script file
-    for (const cmd of hookCommands) {
-      if (cmd.useScriptFile && cmd.scriptPath) {
+    for (const item of actions) {
+      if (item.type === 'command' && item.useScriptFile && item.scriptPath) {
         try {
-          console.log('[Hooks Page] Reading script content:', cmd.scriptPath, 'location:', hook.location, 'projectPath:', projectPath)
-          const content = await api.hooks.readScript(cmd.scriptPath, hook.location || 'user', projectPath || undefined)
-          if (content) {
-            cmd.scriptContent = content
-            console.log('[Hooks Page] Script content loaded, length:', content.length)
-          }
+          const content = await api.hooks.readScript(item.scriptPath, hook.location || 'user', projectPath || undefined)
+          if (content) item.scriptContent = content
         } catch (error) {
           console.error('[Hooks Page] Failed to read script content:', error)
-          // Keep scriptContent empty if read fails
         }
       }
-    }
-
-    const claudeCodeFormat: ClaudeCodeHookConfig = {
-      matcher: hook.pattern || '',
-      hooks: hookCommands.map(cmd => ({
-        type: cmd.type,
-        command: cmd.command,
-        timeout: cmd.timeout,
-      })),
     }
 
     setEditForm({
@@ -331,28 +335,20 @@ export default function Hooks() {
       priority: hook.priority || 100,
       stopOnError: hook.stopOnError || false,
       pattern: hook.pattern || '',
-      rawContent: JSON.stringify(claudeCodeFormat, null, 2),
       matcher: hook.pattern || '',
       matcherIndex: hook.matcherIndex, // Track the index for updating
-      hookCommands,
+      actions,
+      reloadSkills: hook.sessionStart?.reloadSkills ?? false,
+      sessionTitle: hook.sessionStart?.sessionTitle ?? '',
+      maxBlocks: hook.maxBlocks ?? 8,
+      replaceToolOutput: hook.replaceToolOutput ?? false,
+      effort: hook.effort,
     })
     setIsEditing(true)
     setIsCreating(false)
   }
 
   const handleCreate = () => {
-    // Use Claude Code native format template - default to inline command mode
-    const claudeCodeTemplate: ClaudeCodeHookConfig = {
-      matcher: '',
-      hooks: [
-        {
-          type: 'command',
-          command: 'echo "Hook executed"',
-          timeout: 60000,
-        },
-      ],
-    }
-
     setEditForm({
       name: '',
       type: 'SessionStart',
@@ -363,16 +359,14 @@ export default function Hooks() {
       priority: 100,
       stopOnError: false,
       pattern: '',
-      rawContent: JSON.stringify(claudeCodeTemplate, null, 2),
       matcher: '',
-      hookCommands: [{
-        type: 'command',
-        command: '',  // Empty, user will fill in
-        timeout: 60000,
-        useScriptFile: false,  // Default to inline command mode
-        scriptPath: '',
-        scriptContent: '',
-      }],
+      matcherIndex: undefined,
+      actions: [makeEmptyAction()],
+      reloadSkills: false,
+      sessionTitle: '',
+      maxBlocks: 8,
+      replaceToolOutput: false,
+      effort: undefined,
     })
     setIsCreating(true)
     setIsEditing(false)
@@ -389,6 +383,51 @@ export default function Hooks() {
     }
   }
 
+  // Convert an editing action item into a domain HookAction
+  // 单一来源：preview 与保存都用它构建 HookSettingsMatcher，避免序列化逻辑分叉
+  const buildHookConfig = (actions: HookActionItem[]): HookSettingsMatcher => {
+    const cfg: HookSettingsMatcher = {
+      matcher: editForm.matcher || undefined,
+      hooks: actions.map(actionItemToDomain),
+    }
+    if (editForm.type === 'SessionStart') {
+      if (editForm.reloadSkills) cfg.reloadSkills = true
+      if (editForm.sessionTitle.trim()) cfg.sessionTitle = editForm.sessionTitle.trim()
+    }
+    if (editForm.type === 'PostToolUse' && editForm.replaceToolOutput) cfg.replaceToolOutput = true
+    // 仅在偏离默认 8 时写 maxBlocks，避免给每个 Stop hook 注入冗余的默认值
+    if ((editForm.type === 'Stop' || editForm.type === 'StopFailure') && editForm.maxBlocks !== 8) {
+      cfg.maxBlocks = editForm.maxBlocks
+    }
+    return cfg
+  }
+
+  const actionItemToDomain = (item: HookActionItem): HookAction => {
+    const base: HookAction = {
+      type: item.type,
+      timeout: item.timeout,
+      continueOnError: item.continueOnError || undefined,
+      continueOnBlock: item.continueOnBlock || undefined,
+      terminalSequence: item.terminalSequence.trim() || undefined,
+    }
+    if (item.type === 'command') {
+      const commandValue = item.useScriptFile ? item.scriptPath : item.command
+      if (commandValue.trim()) base.command = commandValue
+      if (item.args.some((a) => a.trim())) base.args = item.args.filter((a) => a.trim())
+    } else if (item.type === 'http') {
+      base.url = item.url.trim() || undefined
+      base.method = item.method
+      const headerEntries = item.headers.filter((h) => h.key.trim())
+      if (headerEntries.length > 0) {
+        base.headers = Object.fromEntries(headerEntries.map((h) => [h.key.trim(), h.value]))
+      }
+      if (item.body.trim()) base.body = item.body
+    } else if (item.type === 'prompt') {
+      if (item.prompt.trim()) base.prompt = item.prompt
+    }
+    return base
+  }
+
   const handleSave = async () => {
     const errors: string[] = []
 
@@ -397,14 +436,17 @@ export default function Hooks() {
       errors.push(t('errors.typeRequired'))
     }
 
-    // Validate commands - check either command or scriptPath for script files
-    const validCommands = editForm.hookCommands.filter(cmd => {
-      if (cmd.useScriptFile) {
-        return cmd.scriptPath.trim() && cmd.scriptContent.trim()
+    // Keep actions that have meaningful content for their type
+    const validActions = editForm.actions.filter((item) => {
+      if (item.type === 'command') {
+        if (item.useScriptFile) return item.scriptPath.trim() && item.scriptContent.trim()
+        return item.command.trim() || item.args.some((a) => a.trim())
       }
-      return cmd.command.trim()
+      if (item.type === 'http') return item.url.trim()
+      if (item.type === 'prompt') return item.prompt.trim()
+      return false
     })
-    if (validCommands.length === 0) {
+    if (validActions.length === 0) {
       errors.push(t('errors.actionsRequired'))
     }
 
@@ -413,37 +455,46 @@ export default function Hooks() {
       errors.push(t('errors.projectPathRequired'))
     }
 
-    setValidationErrors(errors)
     if (errors.length > 0) {
+      setValidationErrors(errors)
       return
     }
 
+    const hookConfig = buildHookConfig(validActions)
+
+    // Backend ajv validation before saving（用与保存完全相同的 actions，避免双校验对象分叉）
+    try {
+      const synthesized: Hook = {
+        name: editForm.name,
+        type: editForm.type,
+        enabled: true,
+        description: editForm.description,
+        actions: hookConfig.hooks,
+      }
+      const result = await api.hooks.validateHook(synthesized)
+      if (!result.valid) {
+        setValidationErrors(result.errors)
+        return
+      }
+    } catch (error) {
+      setValidationErrors([(error as Error).message])
+      return
+    }
+
+    setValidationErrors([])
     setSaving(true)
     try {
       // First, create script files if needed
-      for (const cmd of validCommands) {
-        if (cmd.useScriptFile && cmd.scriptPath && cmd.scriptContent) {
-          console.log('[Hooks Page] Creating script file:', cmd.scriptPath)
+      for (const item of validActions) {
+        if (item.type === 'command' && item.useScriptFile && item.scriptPath && item.scriptContent) {
+          console.log('[Hooks Page] Creating script file:', item.scriptPath)
           await api.hooks.createScript(
-            cmd.scriptPath,
-            cmd.scriptContent,
+            item.scriptPath,
+            item.scriptContent,
             editForm.location,
             editForm.projectPath || undefined
           )
         }
-      }
-
-      // Build Claude Code native hook config
-      const hookConfig = {
-        matcher: editForm.matcher || undefined,
-        hooks: validCommands.map(cmd => {
-          const commandValue = cmd.useScriptFile ? cmd.scriptPath : cmd.command
-          return {
-            type: cmd.type,
-            [cmd.type === 'command' ? 'command' : 'prompt']: commandValue,
-            timeout: cmd.timeout,
-          }
-        }),
       }
 
       // When editing, pass matcherIndex to update instead of adding new
@@ -1197,13 +1248,18 @@ export default function Hooks() {
                   <SelectValue placeholder={t('dialog.typePlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
-                  {HOOK_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      <div className="flex flex-col">
-                        <span>{t(`events.${type}.title`, type)}</span>
-                        <span className="text-xs text-muted-foreground">{t(`events.${type}.description`, '')}</span>
-                      </div>
-                    </SelectItem>
+                  {HOOK_TYPE_GROUPS.map((g) => (
+                    <SelectGroup key={g.group}>
+                      <SelectLabel>{t(`groups.${g.group}`, g.group)}</SelectLabel>
+                      {g.types.map((type) => (
+                        <SelectItem key={type} value={type}>
+                          <div className="flex flex-col">
+                            <span>{t(`events.${type}.title`, type)}</span>
+                            <span className="text-xs text-muted-foreground">{t(`events.${type}.description`, '')}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   ))}
                 </SelectContent>
               </Select>
@@ -1273,7 +1329,21 @@ export default function Hooks() {
               </p>
             </div>
 
-            {/* Hook Commands */}
+            {/* Type-specific panels */}
+            <HookTypePanels
+              type={editForm.type}
+              fields={{
+                reloadSkills: editForm.reloadSkills,
+                sessionTitle: editForm.sessionTitle,
+                maxBlocks: editForm.maxBlocks,
+                replaceToolOutput: editForm.replaceToolOutput,
+              }}
+              effort={editForm.effort}
+              onChange={(partial: Partial<HookTypeFields>) => setEditForm({ ...editForm, ...partial })}
+              t={t}
+            />
+
+            {/* Hook Actions */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label>{t('dialog.hookCommands', 'Commands')}</Label>
@@ -1281,175 +1351,27 @@ export default function Hooks() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setEditForm({
-                    ...editForm,
-                    hookCommands: [...editForm.hookCommands, {
-                      type: 'command',
-                      command: '',
-                      timeout: 60000,
-                      useScriptFile: false,
-                      scriptPath: '',
-                      scriptContent: ''
-                    }]
-                  })}
+                  onClick={() => setEditForm({ ...editForm, actions: [...editForm.actions, makeEmptyAction()] })}
                 >
                   <Plus className="h-4 w-4 mr-1" />
                   {t('dialog.addCommand', 'Add Command')}
                 </Button>
               </div>
 
-              {editForm.hookCommands.map((cmd, index) => (
-                <Card key={index} className="p-4">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">{t('dialog.command', 'Command')} {index + 1}</span>
-                      {editForm.hookCommands.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditForm({
-                            ...editForm,
-                            hookCommands: editForm.hookCommands.filter((_, i) => i !== index)
-                          })}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-2">
-                        <Label className="text-xs">{t('dialog.commandType', 'Type')}</Label>
-                        <Select
-                          value={cmd.type}
-                          onValueChange={(value: 'command' | 'prompt') => {
-                            const newCommands = [...editForm.hookCommands]
-                            newCommands[index].type = value
-                            // Reset script file mode when switching to prompt
-                            if (value === 'prompt') {
-                              newCommands[index].useScriptFile = false
-                            }
-                            setEditForm({ ...editForm, hookCommands: newCommands })
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="command">
-                              <div className="flex items-center gap-2">
-                                <Terminal className="h-4 w-4" />
-                                {t('dialog.typeCommand', 'Shell Command')}
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="prompt">
-                              <div className="flex items-center gap-2">
-                                <Code className="h-4 w-4" />
-                                {t('dialog.typePrompt', 'Prompt')}
-                              </div>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label className="text-xs">{t('dialog.timeout', 'Timeout (ms)')}</Label>
-                        <Input
-                          type="number"
-                          value={cmd.timeout}
-                          onChange={(e) => {
-                            const newCommands = [...editForm.hookCommands]
-                            newCommands[index].timeout = parseInt(e.target.value) || 60000
-                            setEditForm({ ...editForm, hookCommands: newCommands })
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Script file toggle - only for command type */}
-                    {cmd.type === 'command' && (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id={`use-script-${index}`}
-                          checked={cmd.useScriptFile}
-                          onChange={(e) => {
-                            const newCommands = [...editForm.hookCommands]
-                            newCommands[index].useScriptFile = e.target.checked
-                            if (e.target.checked && !newCommands[index].scriptPath) {
-                              newCommands[index].scriptPath = '.claude/hooks/my-hook.sh'
-                              newCommands[index].scriptContent = `#!/bin/bash\n# Hook script\necho "Hook executed"\n`
-                            }
-                            setEditForm({ ...editForm, hookCommands: newCommands })
-                          }}
-                          className="h-4 w-4 rounded border-gray-300"
-                        />
-                        <Label htmlFor={`use-script-${index}`} className="text-xs cursor-pointer">
-                          {t('dialog.useScriptFile', 'Create script file (.sh)')}
-                        </Label>
-                      </div>
-                    )}
-
-                    {/* Script file mode */}
-                    {cmd.type === 'command' && cmd.useScriptFile ? (
-                      <>
-                        <div className="space-y-2">
-                          <Label className="text-xs">{t('dialog.scriptPath', 'Script Path')}</Label>
-                          <Input
-                            value={cmd.scriptPath}
-                            onChange={(e) => {
-                              const newCommands = [...editForm.hookCommands]
-                              newCommands[index].scriptPath = e.target.value
-                              setEditForm({ ...editForm, hookCommands: newCommands })
-                            }}
-                            placeholder=".claude/hooks/my-script.sh"
-                            className="font-mono text-sm"
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            {t('dialog.scriptPathHint', 'Relative path from ~/.claude or project root')}
-                          </p>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label className="text-xs">{t('dialog.scriptContent', 'Script Content')}</Label>
-                          <Textarea
-                            value={cmd.scriptContent}
-                            onChange={(e) => {
-                              const newCommands = [...editForm.hookCommands]
-                              newCommands[index].scriptContent = e.target.value
-                              setEditForm({ ...editForm, hookCommands: newCommands })
-                            }}
-                            placeholder={`#!/bin/bash\n# Your hook script here\necho "Hello from hook"`}
-                            className="font-mono text-sm min-h-[200px]"
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            {t('dialog.scriptContentHint', 'The script will be created with executable permissions')}
-                          </p>
-                        </div>
-                      </>
-                    ) : (
-                      /* Inline command mode */
-                      <div className="space-y-2">
-                        <Label className="text-xs">
-                          {cmd.type === 'command' ? t('dialog.shellCommand', 'Shell Command') : t('dialog.promptText', 'Prompt Text')}
-                        </Label>
-                        <Textarea
-                          value={cmd.command}
-                          onChange={(e) => {
-                            const newCommands = [...editForm.hookCommands]
-                            newCommands[index].command = e.target.value
-                            setEditForm({ ...editForm, hookCommands: newCommands })
-                          }}
-                          placeholder={cmd.type === 'command'
-                            ? t('dialog.shellCommandPlaceholder', 'echo "Hook executed" or path/to/script.sh')
-                            : t('dialog.promptPlaceholder', 'Enter prompt text...')}
-                          className="font-mono text-sm min-h-[80px]"
-                        />
-                      </div>
-                    )}
-                  </div>
-                </Card>
+              {editForm.actions.map((action, index) => (
+                <HookActionForm
+                  key={index}
+                  action={action}
+                  index={index}
+                  canRemove={editForm.actions.length > 1}
+                  onChange={(next: HookActionItem) => {
+                    const actions = [...editForm.actions]
+                    actions[index] = next
+                    setEditForm({ ...editForm, actions })
+                  }}
+                  onRemove={() => setEditForm({ ...editForm, actions: editForm.actions.filter((_, i) => i !== index) })}
+                  t={t}
+                />
               ))}
             </div>
 
@@ -1458,29 +1380,13 @@ export default function Hooks() {
               <Label>{t('dialog.preview', 'Configuration Preview')}</Label>
               <div className="bg-muted rounded-lg p-4">
                 <pre className="text-xs font-mono overflow-auto max-h-[200px]">
-                  {JSON.stringify({
-                    hooks: {
-                      [editForm.type]: [
-                        {
-                          matcher: editForm.matcher || undefined,
-                          hooks: editForm.hookCommands.map(cmd => {
-                            const commandValue = cmd.useScriptFile ? cmd.scriptPath : cmd.command
-                            return {
-                              type: cmd.type,
-                              [cmd.type === 'command' ? 'command' : 'prompt']: commandValue,
-                              timeout: cmd.timeout,
-                            }
-                          }),
-                        },
-                      ],
-                    },
-                  }, null, 2)}
+                  {JSON.stringify({ hooks: { [editForm.type]: [buildHookConfig(editForm.actions)] } }, null, 2)}
                 </pre>
               </div>
               <p className="text-xs text-muted-foreground">
                 {t('dialog.previewHint', 'This configuration will be saved to settings.json')}
               </p>
-              {editForm.hookCommands.some(cmd => cmd.useScriptFile && cmd.scriptPath) && (
+              {editForm.actions.some((a) => a.type === 'command' && a.useScriptFile && a.scriptPath) && (
                 <p className="text-xs text-blue-600 dark:text-blue-400">
                   {t('dialog.scriptWillBeCreated', 'Script file(s) will be created automatically')}
                 </p>

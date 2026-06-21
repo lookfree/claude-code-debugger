@@ -2,6 +2,7 @@ import type {
   Skill,
   Agent,
   Hook,
+  HookSettingsMatcher,
   MCPServers,
   MCPServerConfig,
   SlashCommand,
@@ -207,7 +208,7 @@ export const api = {
     },
     saveToSettings: async (
       hookType: string,
-      hookConfig: { matcher?: string; hooks: Array<{ type: string; command?: string; prompt?: string; timeout?: number }> },
+      hookConfig: HookSettingsMatcher,
       location: 'user' | 'project',
       projectPath?: string,
       matcherIndex?: number
@@ -216,6 +217,13 @@ export const api = {
         return window.electronAPI.saveHookToSettings(hookType, hookConfig, location, projectPath, matcherIndex)
       } else {
         await httpPost('/api/hooks/settings', { hookType, hookConfig, location, projectPath, matcherIndex })
+      }
+    },
+    validateHook: async (hook: Hook): Promise<{ valid: boolean; errors: string[] }> => {
+      if (isElectron) {
+        return window.electronAPI.validateHook(hook)
+      } else {
+        return httpPost<{ valid: boolean; errors: string[] }>('/api/hooks/validate', { hook })
       }
     },
     delete: async (name: string): Promise<void> => {

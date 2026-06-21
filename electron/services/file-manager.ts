@@ -2,7 +2,8 @@ import fs from 'fs/promises'
 import path from 'path'
 import { watch, FSWatcher } from 'chokidar'
 import os from 'os'
-import type { Skill, SkillSource, SkillUid, InstalledPluginEntry, Agent, Hook, MCPServers, SlashCommand, CommandSource, ProjectContext, ConfigFile, Marketplace, MarketplaceSource, Plugin, PluginVersion, PluginManifest, PluginComponentCount } from '../../shared/types'
+import type { Skill, SkillSource, SkillUid, InstalledPluginEntry, Agent, Hook, HookAction, HookSettingsMatcher, MCPServers, SlashCommand, CommandSource, ProjectContext, ConfigFile, Marketplace, MarketplaceSource, Plugin, PluginVersion, PluginManifest, PluginComponentCount } from '../../shared/types'
+import { validateAction } from './hook-validation'
 import { globScan, isMissing } from './glob-scan'
 
 export class FileManager {
@@ -737,6 +738,58 @@ export class FileManager {
   }
 
   // Hooks
+  /** settings.json 内层 hook → domain HookAction：按 type 分流，旧抽象动词映射为 command/http/prompt。 */
+  private hookActionFromSettings(raw: Record<string, unknown>): HookAction {
+    const type = this.resolveActionType(raw as { type?: string; url?: string; prompt?: string; command?: string })
+    const action: HookAction = { type }
+    if (type === 'command') {
+      if (typeof raw.command === 'string') action.command = raw.command
+      if (Array.isArray(raw.args)) action.args = raw.args as string[]
+    } else if (type === 'http') {
+      if (typeof raw.url === 'string') action.url = raw.url
+      if (raw.method === 'GET' || raw.method === 'POST' || raw.method === 'PUT') action.method = raw.method
+      if (raw.headers && typeof raw.headers === 'object') action.headers = raw.headers as Record<string, string>
+      if (typeof raw.body === 'string') action.body = raw.body
+    } else {
+      if (typeof raw.prompt === 'string') action.prompt = raw.prompt
+    }
+    if (typeof raw.timeout === 'number') action.timeout = raw.timeout
+    if (typeof raw.continueOnError === 'boolean') action.continueOnError = raw.continueOnError
+    if (typeof raw.continueOnBlock === 'boolean') action.continueOnBlock = raw.continueOnBlock
+    if (typeof raw.terminalSequence === 'string') action.terminalSequence = raw.terminalSequence
+    return action
+  }
+
+  /** 归一 action.type：command/http/prompt 直取；legacy 动词/缺失按字段推断（有 url→http，有 prompt 无 command→prompt，否则 command）。 */
+  private resolveActionType(a: { type?: string; url?: string; prompt?: string; command?: string }): 'command' | 'http' | 'prompt' {
+    if (a.type === 'http' || a.type === 'prompt' || a.type === 'command') return a.type
+    if (a.url) return 'http'
+    if (a.prompt && !a.command) return 'prompt'
+    return 'command'
+  }
+
+  /** domain HookAction → settings.json 内层 hook：只写该 type 相关字段，legacy 动词归一。 */
+  private hookActionToSettings(a: HookAction): Record<string, unknown> {
+    const type = this.resolveActionType(a)
+    const out: Record<string, unknown> = { type }
+    if (type === 'command') {
+      if (a.command) out.command = a.command
+      if (a.args?.length) out.args = a.args
+    } else if (type === 'http') {
+      if (a.url) out.url = a.url
+      if (a.method) out.method = a.method
+      if (a.headers && Object.keys(a.headers).length) out.headers = a.headers
+      if (a.body) out.body = a.body
+    } else {
+      if (a.prompt) out.prompt = a.prompt
+    }
+    if (typeof a.timeout === 'number') out.timeout = a.timeout
+    if (a.continueOnError) out.continueOnError = a.continueOnError
+    if (a.continueOnBlock) out.continueOnBlock = a.continueOnBlock
+    if (a.terminalSequence) out.terminalSequence = a.terminalSequence
+    return out
+  }
+
   async getHooks(): Promise<Hook[]> {
     const hooks: Hook[] = []
 
@@ -750,42 +803,40 @@ export class FileManager {
     for (const { path: settingsPath, location } of settingsFiles) {
       try {
         const settings = await this.readJSONFile<{
-          hooks?: Record<string, Array<{
-            matcher?: string
-            hooks?: Array<{
-              type: string
-              command?: string
-              prompt?: string
-              timeout?: number
-            }>
-          }>>
+          hooks?: Record<string, Array<Record<string, unknown>>>
         }>(settingsPath)
 
         if (settings?.hooks) {
           // Convert Claude Code settings.json hooks format to our Hook format
           for (const [eventType, matchers] of Object.entries(settings.hooks)) {
             for (let i = 0; i < matchers.length; i++) {
-              const matcher = matchers[i]
-              const hookName = `${eventType}${matcher.matcher ? `-${matcher.matcher.replace(/[|*]/g, '_')}` : ''}-${i}`
+              const matcher = matchers[i] || {}
+              const matcherStr = typeof matcher.matcher === 'string' ? matcher.matcher : ''
+              const hookName = `${eventType}${matcherStr ? `-${matcherStr.replace(/[|*]/g, '_')}` : ''}-${i}`
 
-              const actions = (matcher.hooks || []).map(h => ({
-                type: 'execute' as const,
-                command: h.command || h.prompt || '',
-                timeout: h.timeout,
-                continueOnError: false,
-              }))
+              const rawHooks = Array.isArray(matcher.hooks) ? (matcher.hooks as Array<Record<string, unknown>>) : []
+              const actions = rawHooks.map((h) => this.hookActionFromSettings(h))
 
-              const hookObj = {
+              const hookObj: Hook = {
                 name: hookName,
                 type: eventType as Hook['type'],
                 enabled: true,
-                description: `${eventType} hook${matcher.matcher ? ` for ${matcher.matcher}` : ''}`,
-                pattern: matcher.matcher || '',
+                description: `${eventType} hook${matcherStr ? ` for ${matcherStr}` : ''}`,
+                pattern: matcherStr,
                 actions,
                 filePath: settingsPath,
                 location,
                 matcherIndex: i, // Track the index for editing/deleting
               }
+              // matcher 级扩展字段（spec007）
+              if (typeof matcher.reloadSkills === 'boolean' || typeof matcher.sessionTitle === 'string') {
+                hookObj.sessionStart = {
+                  ...(typeof matcher.reloadSkills === 'boolean' ? { reloadSkills: matcher.reloadSkills } : {}),
+                  ...(typeof matcher.sessionTitle === 'string' ? { sessionTitle: matcher.sessionTitle } : {}),
+                }
+              }
+              if (typeof matcher.replaceToolOutput === 'boolean') hookObj.replaceToolOutput = matcher.replaceToolOutput
+              if (typeof matcher.maxBlocks === 'number') hookObj.maxBlocks = matcher.maxBlocks
               this.logger.info('Loaded hook with matcherIndex:', hookName, 'matcherIndex:', i)
               hooks.push(hookObj)
             }
@@ -867,7 +918,7 @@ export class FileManager {
   // Save hook to Claude Code settings.json format
   async saveHookToSettings(
     hookType: string,
-    hookConfig: { matcher?: string; hooks: Array<{ type: string; command?: string; prompt?: string; timeout?: number }> },
+    hookConfig: HookSettingsMatcher,
     location: 'user' | 'project',
     projectPath?: string,
     matcherIndex?: number // If provided, update existing hook at this index; otherwise add new
@@ -877,6 +928,13 @@ export class FileManager {
       : path.join(projectPath || this.projectPath, '.claude', 'settings.json')
 
     this.logger.info('Saving hook to settings:', settingsPath, 'matcherIndex:', matcherIndex)
+
+    // 按 action.type 序列化内层 hook，并逐个 ajv 校验（绕过前端也拦得住，spec007）
+    const innerHooks = (hookConfig.hooks || []).map((a) => this.hookActionToSettings(a))
+    for (const h of innerHooks) {
+      const { valid, errors } = validateAction(h)
+      if (!valid) throw new Error(`Invalid hook action: ${errors.join('; ')}`)
+    }
 
     // Read existing settings
     let settings: Record<string, unknown> = {}
@@ -899,14 +957,28 @@ export class FileManager {
       hooksObj[hookType] = []
     }
 
+    const updating = matcherIndex !== undefined && matcherIndex >= 0 && matcherIndex < hooksObj[hookType].length
+    // 编辑时以原 matcher 对象为底，保留本工具未建模的未知字段（spec009 铁律：不丢用户字段）
+    const existing = updating ? (hooksObj[hookType][matcherIndex] as Record<string, unknown>) : {}
+
+    // 建模的 matcher 级字段为权威：present 则写、absent 则删（让用户能清掉之前设过的值）
+    const matcherObj: Record<string, unknown> = { ...existing, hooks: innerHooks }
+    const setOrDelete = (key: string, val: unknown) => {
+      if (val === undefined) delete matcherObj[key]
+      else matcherObj[key] = val
+    }
+    setOrDelete('matcher', hookConfig.matcher || undefined)
+    setOrDelete('reloadSkills', typeof hookConfig.reloadSkills === 'boolean' ? hookConfig.reloadSkills : undefined)
+    setOrDelete('sessionTitle', hookConfig.sessionTitle || undefined)
+    setOrDelete('replaceToolOutput', typeof hookConfig.replaceToolOutput === 'boolean' ? hookConfig.replaceToolOutput : undefined)
+    setOrDelete('maxBlocks', typeof hookConfig.maxBlocks === 'number' ? hookConfig.maxBlocks : undefined)
+
     // Update existing or add new hook config
-    if (matcherIndex !== undefined && matcherIndex >= 0 && matcherIndex < hooksObj[hookType].length) {
-      // Update existing hook at the specified index
-      hooksObj[hookType][matcherIndex] = hookConfig
+    if (updating) {
+      hooksObj[hookType][matcherIndex] = matcherObj
       this.logger.info('Updated existing hook at index:', matcherIndex)
     } else {
-      // Add new hook config
-      hooksObj[hookType].push(hookConfig)
+      hooksObj[hookType].push(matcherObj)
       this.logger.info('Added new hook config')
     }
 
