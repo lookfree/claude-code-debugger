@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { KeyValueRows } from '@/components/KeyValueRows'
 import { Server, Globe, Plus, Pencil, Trash2, Save, X, Zap, Info, MessageCircleQuestion } from 'lucide-react'
 
 type Transport = 'stdio' | 'http' | 'sse'
@@ -44,8 +45,6 @@ export default function MCP() {
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingName, setEditingName] = useState<string | null>(null)
-  // 编辑时保存原始 config，保存时以它为底，避免丢掉表单不管理的字段（env / alwaysAllow 等）
-  const [editingConfig, setEditingConfig] = useState<MCPServerConfig | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm())
 
   const load = async () => {
@@ -68,10 +67,9 @@ export default function MCP() {
     return { local, remote }
   }, [servers])
 
-  const openAdd = () => { setEditingName(null); setEditingConfig(null); setForm(emptyForm()); setDialogOpen(true) }
+  const openAdd = () => { setEditingName(null); setForm(emptyForm()); setDialogOpen(true) }
   const openEdit = (name: string, c: MCPServerConfig) => {
     setEditingName(name)
-    setEditingConfig(c)
     setForm({
       name,
       type: c.type ?? (isRemoteMCP(c) ? 'http' : 'stdio'),
@@ -94,7 +92,7 @@ export default function MCP() {
     if (!name) return
     const isRemote = form.type === 'http' || form.type === 'sse'
     // 以原 config 为底，保留表单不管理的字段（env / alwaysAllow 等）；只覆盖表单管理的字段
-    const cfg: MCPServerConfig = { ...(editingConfig ?? {}), type: form.type }
+    const cfg: MCPServerConfig = { ...(editingName ? servers[editingName] : {}), type: form.type }
     const set = <K extends keyof MCPServerConfig>(k: K, v: MCPServerConfig[K] | undefined) => {
       if (v === undefined) delete cfg[k]
       else cfg[k] = v
@@ -281,13 +279,7 @@ function McpDialog({ open, onOpenChange, form, setForm, editingName, onSave, t }
                   <Label className="text-xs">{t('fields.headers')}</Label>
                   <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => setForm({ ...form, headers: [...form.headers, { key: '', value: '' }] })}><Plus className="w-3 h-3" /></Button>
                 </div>
-                {form.headers.map((h, i) => (
-                  <div key={i} className="flex gap-1">
-                    <Input className="w-40" placeholder="key" value={h.key} onChange={(e) => setForm({ ...form, headers: form.headers.map((x, j) => j === i ? { ...x, key: e.target.value } : x) })} />
-                    <Input className="flex-1" placeholder="value" value={h.value} onChange={(e) => setForm({ ...form, headers: form.headers.map((x, j) => j === i ? { ...x, value: e.target.value } : x) })} />
-                    <Button variant="ghost" size="sm" className="h-9 w-8 p-0" onClick={() => setForm({ ...form, headers: form.headers.filter((_, j) => j !== i) })}><X className="w-3.5 h-3.5" /></Button>
-                  </div>
-                ))}
+                <KeyValueRows rows={form.headers} onChange={(headers) => setForm({ ...form, headers })} />
               </div>
             </>
           ) : (

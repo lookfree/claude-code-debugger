@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Card } from '@/components/ui/card'
+import { KeyValueRows } from '@/components/KeyValueRows'
 import { Terminal, Code, Globe, Plus, Trash2 } from 'lucide-react'
 
 export type HookActionItemType = 'command' | 'http' | 'prompt'
@@ -277,38 +278,12 @@ export function HookActionForm({ action, index, canRemove, onChange, onRemove, t
                   {t('dialog.addHeader', 'Add Header')}
                 </Button>
               </div>
-              {action.headers.map((h, hi) => (
-                <div key={hi} className="flex gap-2">
-                  <Input
-                    value={h.key}
-                    onChange={(e) => {
-                      const headers = [...action.headers]
-                      headers[hi] = { ...headers[hi], key: e.target.value }
-                      patch({ headers })
-                    }}
-                    placeholder={t('dialog.headerKey', 'Header name')}
-                    className="font-mono text-sm"
-                  />
-                  <Input
-                    value={h.value}
-                    onChange={(e) => {
-                      const headers = [...action.headers]
-                      headers[hi] = { ...headers[hi], value: e.target.value }
-                      patch({ headers })
-                    }}
-                    placeholder={t('dialog.headerValue', 'Header value')}
-                    className="font-mono text-sm"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => patch({ headers: action.headers.filter((_, i) => i !== hi) })}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              ))}
+              <KeyValueRows
+                rows={action.headers}
+                onChange={(headers) => patch({ headers })}
+                keyPlaceholder={t('dialog.headerKey', 'Header name')}
+                valuePlaceholder={t('dialog.headerValue', 'Header value')}
+              />
             </div>
 
             <div className="space-y-2">
