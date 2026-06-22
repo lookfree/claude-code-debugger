@@ -20,6 +20,19 @@ function inputSummary(input: Record<string, unknown>): string {
   return s.length > 220 ? s.slice(0, 220) + '…' : s
 }
 
+/**
+ * 按「轮」分组：每个 user_turn（真人 prompt）开一组，该轮的 assistant/工具/结果归入同组。
+ * 用于「轮次倒序、每轮内部正序」展示——只反转组顺序，组内保持时序。
+ */
+function groupTurns(events: SessionEvent[]): SessionEvent[][] {
+  const groups: SessionEvent[][] = []
+  for (const e of events) {
+    if (e.kind === 'user_turn' || groups.length === 0) groups.push([e])
+    else groups[groups.length - 1].push(e)
+  }
+  return groups
+}
+
 export function ConversationReplay({ events, scrollToSeq, live }: Props) {
   const { t } = useTranslation('sessions')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -30,6 +43,8 @@ export function ConversationReplay({ events, scrollToSeq, live }: Props) {
   const cards = useMemo(() => events.filter((e) => e.kind !== 'meta'), [events])
   const hidden = Math.max(0, cards.length - limit)
   const visible = hidden > 0 ? cards.slice(hidden) : cards
+  // 轮次倒序（最新轮在上），每轮内部仍正序
+  const turns = groupTurns(visible)
 
   // 倒序展示（最新在最上）：新事件到达回到顶部跟随（除非锁定）
   useEffect(() => {
@@ -66,10 +81,17 @@ export function ConversationReplay({ events, scrollToSeq, live }: Props) {
           {live && <span className="ml-1 w-2 h-2 rounded-full bg-green-500 animate-pulse" />}
         </button>
       </div>
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2">
-        {/* 倒序：最新事件在最上 */}
-        {[...visible].reverse().map((e) => (
-          <EventCard key={`${e.uuid}-${e.seq}`} event={e} t={t} />
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
+        {/* 轮次倒序：最新轮在最上；每轮内部正序 */}
+        {[...turns].reverse().map((group) => (
+          <div
+            key={`${group[0].uuid}-${group[0].seq}`}
+            className="space-y-2 pt-3 border-t border-border/40 first:border-0 first:pt-0"
+          >
+            {group.map((e) => (
+              <EventCard key={`${e.uuid}-${e.seq}`} event={e} t={t} />
+            ))}
+          </div>
         ))}
         {/* 更早事件在下方，懒加载按钮置底 */}
         {hidden > 0 && (
