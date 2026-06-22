@@ -1,6 +1,6 @@
 {
-  "appTitle": "Claude Debugger",
-  "appName": "Claude Code Debugger",
+  "appTitle": "CC Harness",
+  "appName": "CC Harness",
   "version": "v{{version}}",
   "nav": {
     "dashboard": "Dashboard",

@@ -1,10 +1,10 @@
-# claude-code-debugger
+# cc-harness
 
 围绕 Claude Code 的桌面工具。Electron + React + TypeScript，双模式（桌面 Electron / Web Express）。
 
 **定位正在演进**：从一年前的"Claude Code 配置浏览器"重做成 **"Harness 工作台"**——配置 / 调试 / 观测 / 编排 / 教学 五件事。详细方向、路径、按版本对齐的功能缺口、以及每个功能的可执行 spec，全部在 `docs/`：
 
-- `docs/claude-code-debugger演进路径.md` —— 产品方向、五支柱、Phase 0/1/2/3 划分（**先读这个**）。
+- `docs/cc-harness演进路径.md` —— 产品方向、五支柱、Phase 0/1/2/3 划分（**先读这个**）。
 - `docs/harness-ide-spec/README.md` —— 22 个实现 spec 的索引（spec001–022）+ 状态 + 依赖关系。
 - `docs/harness-ide-spec/功能版本对照表.md` —— 功能 ID（ORCH/OBS/HOOK/PERM/MODEL/SKILL/MISC）↔ Claude Code 版本 ↔ 项目覆盖状态。
 

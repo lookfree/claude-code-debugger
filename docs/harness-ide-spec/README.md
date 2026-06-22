@@ -1,10 +1,10 @@
 # harness-ide-spec · 实现 spec 索引
 
-这个目录放 claude-code-debugger 从「配置浏览器」演进到「Harness 工作台」的**可执行实现 spec**。每个 spec 是一份能直接照着写代码的施工图——引用真实 `file:line`、给确切 diff / 类型定义、列可测验收标准。
+这个目录放 cc-harness 从「配置浏览器」演进到「Harness 工作台」的**可执行实现 spec**。每个 spec 是一份能直接照着写代码的施工图——引用真实 `file:line`、给确切 diff / 类型定义、列可测验收标准。
 
 配套两份上层文档：
 
-- [claude-code-debugger 演进路径](../claude-code-debugger演进路径.md)——产品思路与 Phase 0/1/2/3 划分。
+- [cc-harness 演进路径](../cc-harness演进路径.md)——产品思路与 Phase 0/1/2/3 划分。
 - [功能版本对照表](./功能版本对照表.md)——功能 ID 索引（ORCH / OBS / HOOK / PERM / MODEL / SKILL / MISC）。spec 通过「对应功能 ID」字段挂回这张表。
 
 ---

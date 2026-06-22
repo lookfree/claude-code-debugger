@@ -1,6 +1,6 @@
 {
-  "appTitle": "Claude 调试器",
-  "appName": "Claude Code 调试器",
+  "appTitle": "CC Harness",
+  "appName": "CC Harness",
   "version": "v{{version}}",
   "nav": {
     "dashboard": "仪表板",

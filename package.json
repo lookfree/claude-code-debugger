@@ -1,5 +1,5 @@
 {
-  "name": "claude-code-debugger",
+  "name": "cc-harness",
   "version": "0.1.0",
   "description": "A powerful debugger and manager for Claude Code skills, agents, hooks, MCP servers, and slash commands",
   "main": "dist-electron/main.js",
@@ -78,8 +78,8 @@
     "wait-on": "^8.0.0"
   },
   "build": {
-    "appId": "com.claude.debugger",
-    "productName": "Claude Code Debugger",
+    "appId": "com.cc.harness",
+    "productName": "CC Harness",
     "directories": {
       "output": "release"
     },

@@ -1,4 +1,4 @@
-# claude-code-debugger 演进路径——从"配置浏览器"到"Harness 工作台"
+# cc-harness 演进路径——从"配置浏览器"到"Harness 工作台"
 
 写给自己看的产品思路梳理。把这个一年前的项目，接到 Claude Code 2.1.183 的现实，以及自己 harness 系列的产品命题上。
 
@@ -10,7 +10,7 @@
 
 ### 项目当下的样子
 
-`~/Documents/projects/claude-code-debugger`，一年前的产物。Electron + Vite + React + shadcn/ui + Zustand + i18next，双模式（桌面 Electron + Web Express）。九个页面：Dashboard、Skills、Agents、Hooks、MCP、Commands、ClaudeMd、Graph、Models、Settings。
+`~/Documents/projects/cc-harness`，一年前的产物（原名 claude-code-debugger）。Electron + Vite + React + shadcn/ui + Zustand + i18next，双模式（桌面 Electron + Web Express）。九个页面：Dashboard、Skills、Agents、Hooks、MCP、Commands、ClaudeMd、Graph、Models、Settings。
 
 它的数据模型是这样的——
 

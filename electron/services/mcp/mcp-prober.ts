@@ -113,7 +113,7 @@ async function probeStdio(name: string, config: MCPServerConfig, startMs: number
     try {
       proc.stdin?.write(JSON.stringify({
         jsonrpc: '2.0', id: 1, method: 'initialize',
-        params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'claude-code-debugger', version: '1.0' } },
+        params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'cc-harness', version: '1.0' } },
       }) + '\n')
     } catch { /* stdin closed */ }
   })
@@ -128,7 +128,7 @@ async function probeHttp(name: string, config: MCPServerConfig, transport: MCPHe
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(config.headers ?? {}) },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'claude-code-debugger', version: '1.0' } } }),
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'cc-harness', version: '1.0' } } }),
       signal: ctrl.signal,
     })
     clearTimeout(timer)
