@@ -6,9 +6,9 @@
 
 ### 把 Claude Code 的黑盒照亮
 
-**围绕 Claude Code 的开源桌面工作台：配置 · 调试 · 观测 · 编排**
+**围绕 Claude Code 的开源桌面工作台：配置 · 调试 · 观测 · 编排 · 教学**
 
-A desktop workbench for Claude Code: configure, debug, observe, and orchestrate your AI agent workflows.
+A desktop workbench for Claude Code: configure, debug, observe, orchestrate, and teach your AI agent workflows.
 
 **简体中文** · [问题反馈](https://github.com/lookfree/cc-harness/issues)
 
