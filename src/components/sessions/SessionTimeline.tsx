@@ -101,27 +101,31 @@ export function SessionTimeline({ events, domain, onSeek, label }: Props) {
         className="flex items-end gap-px bg-muted/30 rounded border border-border/50 p-1"
         style={{ height: BAR_H + 8 }}
       >
-        {buckets.map((b, i) => (
-          <button
-            key={i}
-            disabled={b.total === 0}
-            onClick={() => b.firstSeq !== undefined && onSeek?.(b.firstSeq)}
-            title={bucketTitle(b, t)}
-            style={{ height: BAR_H }}
-            className="flex-1 flex flex-col-reverse overflow-hidden hover:opacity-70 disabled:pointer-events-none"
-          >
-            {STACK_KINDS.map((k) =>
-              b.counts[k] ? (
-                // 非零桶至少 1px，避免被峰值桶压成不可见
-                <div
-                  key={k}
-                  className={KIND_COLOR[k]}
-                  style={{ height: Math.max(1, Math.round((b.counts[k] / maxCount) * BAR_H)) }}
-                />
-              ) : null
-            )}
-          </button>
-        ))}
+        {buckets.map((b, i) => {
+          // 柱总高用 sqrt 缩放：分布常极度偏斜（峰值桶上千、其余几条），线性会把小桶压成 0；
+          // sqrt 压缩动态范围让小桶也看得见。桶内再按各类型比例堆叠。
+          const barH = b.total ? Math.max(2, Math.round(Math.sqrt(b.total / maxCount) * BAR_H)) : 0
+          return (
+            <button
+              key={i}
+              disabled={b.total === 0}
+              onClick={() => b.firstSeq !== undefined && onSeek?.(b.firstSeq)}
+              title={bucketTitle(b, t)}
+              style={{ height: BAR_H }}
+              className="flex-1 flex flex-col-reverse overflow-hidden hover:opacity-70 disabled:pointer-events-none"
+            >
+              {STACK_KINDS.map((k) =>
+                b.counts[k] ? (
+                  <div
+                    key={k}
+                    className={KIND_COLOR[k]}
+                    style={{ height: Math.max(1, Math.round((b.counts[k] / b.total) * barH)) }}
+                  />
+                ) : null
+              )}
+            </button>
+          )
+        })}
       </div>
       {/* 时间轴：起止时刻 + 跨度 */}
       <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
