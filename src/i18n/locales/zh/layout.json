@@ -2,6 +2,8 @@
   "appTitle": "CC Harness",
   "appName": "CC Harness",
   "version": "v{{version}}",
+  "collapseSidebar": "收起侧边栏",
+  "expandSidebar": "展开侧边栏",
   "nav": {
     "dashboard": "仪表板",
     "sessions": "会话监视",

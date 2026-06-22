@@ -2,6 +2,8 @@
   "appTitle": "CC Harness",
   "appName": "CC Harness",
   "version": "v{{version}}",
+  "collapseSidebar": "Collapse sidebar",
+  "expandSidebar": "Expand sidebar",
   "nav": {
     "dashboard": "Dashboard",
     "sessions": "Sessions",

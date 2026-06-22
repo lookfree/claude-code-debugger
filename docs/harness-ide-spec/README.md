@@ -66,9 +66,9 @@
 
 ---
 
-## 全量 spec 清单（spec001–spec022）
+## 全量 spec 清单（spec001–spec023）
 
-### Phase 0 · 止血（spec001–003、spec022）
+### Phase 0 · 止血（spec001–003、spec022–023）
 
 | 编号 | 标题 | Phase | 对应 ID | 状态 |
 |---|---|---|---|---|
@@ -76,6 +76,7 @@
 | spec002 | 扫描报错降级 | P0 | 项目自身 bug | ✅ 完成 |
 | spec003 | 扫描路径配置化地基 | P0 | SKILL-01（地基） | ✅ 完成 |
 | spec022 | 依赖与 Electron 版本核验 | P0 | MISC-11 | ✅ 完成 |
+| spec023 | 侧边栏收缩重构（lime 风格） | P0 | MISC（布局 UX） | 就绪 |
 
 ### Phase 1 · 补配置层（spec004–013）
 

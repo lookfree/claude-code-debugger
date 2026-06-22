@@ -45,25 +45,44 @@ const navigationKeys = [
   { key: 'settings', href: '/settings', icon: Settings },
 ] as const
 
+const isMac = typeof navigator !== 'undefined'
+  && /mac/i.test(`${navigator.platform} ${navigator.userAgent}`)
+
 export function Layout({ children }: LayoutProps) {
   const location = useLocation()
   const { t } = useTranslation('layout')
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      {/* 全宽 titlebar — drag 区域，pl-20 避开 macOS traffic lights */}
+    <div className="flex h-screen bg-background overflow-hidden">
+      {/* 侧栏 — 自身是 drag 区域，收缩到 icon-only（72px）而非消失 */}
       <div
-        className="h-14 border-b border-border bg-card flex items-center px-3 shrink-0"
+        className={cn(
+          'border-r border-border bg-card flex flex-col flex-shrink-0 transition-all duration-200 overflow-hidden',
+          sidebarOpen ? 'w-64' : 'w-[72px]',
+        )}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
+        {/* 头部：流量灯垂直避让 + toggle 按钮 */}
         <div
-          className="pl-24 flex items-center"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          className={cn(
+            'flex items-center shrink-0 px-3 pb-2',
+            sidebarOpen ? 'justify-between' : 'justify-center',
+          )}
+          style={{
+            paddingTop: isMac ? '46px' : '14px',
+            WebkitAppRegion: 'no-drag',
+          } as React.CSSProperties}
         >
+          {sidebarOpen && (
+            <span className="text-sm font-semibold text-foreground truncate">
+              {t('appName')}
+            </span>
+          )}
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+            title={sidebarOpen ? t('collapseSidebar') : t('expandSidebar')}
           >
             {sidebarOpen
               ? <PanelLeftClose className="w-4 h-4" />
@@ -71,48 +90,51 @@ export function Layout({ children }: LayoutProps) {
             }
           </button>
         </div>
-      </div>
 
-      {/* 内容区 */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* 侧栏 */}
-        <div className={cn(
-          'border-r border-border bg-card flex flex-col flex-shrink-0 transition-all duration-200 overflow-hidden',
-          sidebarOpen ? 'w-64' : 'w-0 border-r-0',
-        )}>
-          <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-            {navigationKeys.map((item) => {
-              const isActive = location.pathname === item.href
-              return (
-                <Link
-                  key={item.key}
-                  to={item.href}
-                  className={cn(
-                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                    isActive
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                  )}
-                >
-                  <item.icon className="w-5 h-5" />
-                  {t(`nav.${item.key}`)}
-                </Link>
-              )
-            })}
-          </nav>
+        {/* 导航 */}
+        <nav
+          className="flex-1 overflow-y-auto p-2 space-y-1"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+          {navigationKeys.map((item) => {
+            const isActive = location.pathname === item.href
+            return (
+              <Link
+                key={item.key}
+                to={item.href}
+                title={sidebarOpen ? undefined : t(`nav.${item.key}`)}
+                className={cn(
+                  'flex items-center rounded-lg text-sm font-medium transition-colors',
+                  sidebarOpen ? 'gap-3 px-3 py-2' : 'justify-center p-2',
+                  isActive
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                )}
+              >
+                <item.icon className="w-5 h-5 shrink-0" />
+                {sidebarOpen && t(`nav.${item.key}`)}
+              </Link>
+            )
+          })}
+        </nav>
 
-          <div className="border-t border-border p-4 space-y-3 shrink-0">
+        {/* 底部：收缩时隐藏 */}
+        {sidebarOpen && (
+          <div
+            className="border-t border-border p-4 space-y-3 shrink-0"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          >
             <LanguageSwitcher />
             <div className="text-xs text-muted-foreground">
               <p>{t('appName')}</p>
               <p className="mt-1">{t('version', { version: '0.1.0' })}</p>
             </div>
           </div>
-        </div>
-
-        {/* 主内容 */}
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        )}
       </div>
+
+      {/* 主内容 */}
+      <main className="flex-1 overflow-y-auto p-6">{children}</main>
     </div>
   )
 }
