@@ -19,10 +19,8 @@ import type { SessionEvent, SessionSummary, SessionEventsPush, AgentTopology } f
 export class SessionMonitor {
   /** sessionId → 该会话的 tailer（subscribe 时建，unsubscribe 时 close 防句柄泄漏） */
   private tailers = new Map<string, SessionTailer>()
-  /** sessionId → workflow/subagents 目录 watcher（spec016 拓扑实时长出） */
-  private topoWatchers = new Map<string, FSWatcher>()
-  /** sessionId → 拓扑重建去抖定时器 */
-  private topoTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  /** sessionId → workflow/subagents 目录 watcher + 去抖定时器（spec016 拓扑实时长出） */
+  private topoSubs = new Map<string, { watcher: FSWatcher; timer?: ReturnType<typeof setTimeout> }>()
 
   constructor(private getWin: () => BrowserWindow | null) {}
 
@@ -33,35 +31,38 @@ export class SessionMonitor {
 
   /** 订阅拓扑：监听 `<sessionId>/workflows` 与 `subagents` 目录，文件变化去抖重建并 push。 */
   subscribeTopology(sessionId: string, sessionFilePath: string): void {
-    if (this.topoWatchers.has(sessionId)) return
+    if (this.topoSubs.has(sessionId)) return
     const subdir = path.join(path.dirname(sessionFilePath), path.basename(sessionFilePath, '.jsonl'))
     void this.pushTopology(sessionId, sessionFilePath) // 首屏全量
     // 目标在 .claude 段下，不能套 dotfile 忽略正则（与 SessionTailer 同款坑）
-    const w = watch([path.join(subdir, 'workflows'), path.join(subdir, 'subagents')], {
+    const watcher = watch([path.join(subdir, 'workflows'), path.join(subdir, 'subagents')], {
       persistent: true,
       ignoreInitial: true,
       awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
     })
     const onChange = () => {
-      clearTimeout(this.topoTimers.get(sessionId))
-      this.topoTimers.set(
-        sessionId,
-        setTimeout(() => void this.pushTopology(sessionId, sessionFilePath), 300)
-      )
+      const sub = this.topoSubs.get(sessionId)
+      if (!sub) return
+      clearTimeout(sub.timer)
+      sub.timer = setTimeout(() => void this.pushTopology(sessionId, sessionFilePath), 300)
     }
-    w.on('add', onChange).on('change', onChange).on('unlink', onChange).on('addDir', onChange)
-    this.topoWatchers.set(sessionId, w)
+    watcher.on('add', onChange).on('change', onChange).on('unlink', onChange).on('addDir', onChange)
+    this.topoSubs.set(sessionId, { watcher })
   }
 
   unsubscribeTopology(sessionId: string): void {
-    this.topoWatchers.get(sessionId)?.close()
-    this.topoWatchers.delete(sessionId)
-    clearTimeout(this.topoTimers.get(sessionId))
-    this.topoTimers.delete(sessionId)
+    const sub = this.topoSubs.get(sessionId)
+    if (!sub) return
+    sub.watcher.close()
+    clearTimeout(sub.timer)
+    this.topoSubs.delete(sessionId)
   }
 
   private async pushTopology(sessionId: string, sessionFilePath: string): Promise<void> {
     try {
+      // 注：每次变更全量重建（重读+重解析所有 agent jsonl）。仅在 workflow 运行中（持续写文件）
+      // 才频繁触发；已完成/killed 的 workflow 无文件变更=零重建。真上几百 agent 的活跃 run 再加
+      // mtime 缓存只重解析变化的那个文件（spec016 待优化项）。
       const topology = await buildAgentTopology(sessionFilePath)
       this.getWin()?.webContents.send('session:topology', { sessionId, topology })
     } catch {
@@ -126,7 +127,7 @@ export class SessionMonitor {
   /** 应用退出/窗口关闭时全部退订，防句柄泄漏。 */
   unsubscribeAll(): void {
     for (const id of [...this.tailers.keys()]) this.unsubscribe(id)
-    for (const id of [...this.topoWatchers.keys()]) this.unsubscribeTopology(id)
+    for (const id of [...this.topoSubs.keys()]) this.unsubscribeTopology(id)
   }
 
   private push(payload: SessionEventsPush): void {

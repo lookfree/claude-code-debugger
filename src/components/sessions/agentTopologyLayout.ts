@@ -47,11 +47,12 @@ export function buildFlow(topology: AgentTopology, mode: TopoMode): { nodes: Nod
     })
 
     const agentsTop = cursorY + WF_H + GAP_Y
+    // tree 模式按 depth 再下沉一层；workflow 模式纯网格（depth 不参与）
+    const depthUnit = mode === 'tree' ? NODE_H + GAP_Y : 0
     wfAgents.forEach((a, i) => {
       const col = i % COLS
       const row = Math.floor(i / COLS)
-      // tree 模式按 depth 再下沉一层；workflow 模式用网格
-      const depthOffset = mode === 'tree' ? a.depth * (NODE_H + GAP_Y) : 0
+      const depthOffset = a.depth * depthUnit
       // 节点 id 以 runId 命名空间化：避免与别的 workflow / 主会话 Task 树的 agentId 撞 id（reactflow 会静默丢节点）
       const nodeId = `agent:${wf.runId}:${a.agentId}`
       nodes.push({

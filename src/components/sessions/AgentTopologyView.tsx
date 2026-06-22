@@ -1,5 +1,5 @@
 import 'reactflow/dist/style.css'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactFlow, { Background, Controls, useNodesState, useEdgesState, type Node } from 'reactflow'
 import { api } from '@/lib/api'
@@ -56,12 +56,7 @@ export function AgentTopologyView({ sessionId, sessionFilePath }: Props) {
     api.session.snapshot(agent.agentId, agent.filePath!).then(setDrawerEvents)
   }, [])
 
-  const isEmpty = useMemo(
-    () => topology != null && topology.workflows.length === 0 && topology.taskTree.length === 0,
-    [topology]
-  )
-
-  if (topology && isEmpty) {
+  if (topology && topology.workflows.length === 0 && topology.taskTree.length === 0) {
     return <div className="p-4 text-sm text-muted-foreground">{t('topo.empty')}</div>
   }
 
