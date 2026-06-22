@@ -22,7 +22,49 @@
   "tab": {
     "replay": "对话回放",
     "timeline": "时间线",
-    "topology": "Agent 拓扑"
+    "topology": "Agent 拓扑",
+    "usage": "用量"
+  },
+  "usage": {
+    "loading": "正在计算用量…",
+    "empty": "该会话没有 token 用量",
+    "cost": "估算成本",
+    "estimated": "估算，单价表更新于 {{date}}",
+    "output": "输出 token",
+    "cacheRead": "缓存读取",
+    "cacheNote": "便宜（约 0.1×），常主导原始 token 计数",
+    "turns": "轮次",
+    "turnN": "第 {{n}} 轮",
+    "pieTitle": "按来源分项成本（估算）",
+    "spendTitle": "累计花费",
+    "modelTable": "按模型",
+    "model": "模型",
+    "adviceTitle": "调优建议",
+    "bucket": {
+      "base": "基础",
+      "skills": "技能",
+      "subagents": "子代理",
+      "mcp": "MCP",
+      "plugins": "插件"
+    }
+  },
+  "advice": {
+    "switch-sonnet": {
+      "title": "换 Sonnet 约省 {{pct}}%",
+      "detail": "本会话以 Opus 为主；把这些 token 按 Sonnet 单价重算约省 ${{usd}}。"
+    },
+    "thinking-budget": {
+      "title": "thinking 占比高——调低 MAX_THINKING_TOKENS",
+      "detail": "thinking 约占输出 token 的 {{pct}}%，设上限可削减。"
+    },
+    "low-cache": {
+      "title": "提示缓存命中率低",
+      "detail": "输入里仅 {{pct}}% 是缓存读取；检查 system prompt 是否稳定。"
+    },
+    "subagents-heavy": {
+      "title": "token 集中在子代理",
+      "detail": "{{pct}}% 的 token 在子代理；考虑收敛 fan-out。"
+    }
   },
   "topo": {
     "empty": "该会话没有 subagent 或 workflow",

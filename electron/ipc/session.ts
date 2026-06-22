@@ -27,4 +27,7 @@ export function registerSessionHandlers(ipcMain: IpcMain, monitor: SessionMonito
     monitor.unsubscribeTopology(id)
     return true
   })
+
+  // spec017 token/usage 分项 + ECC 建议
+  ipcMain.handle('session:usage', (_e, id: string, filePath: string) => monitor.usage(id, filePath))
 }

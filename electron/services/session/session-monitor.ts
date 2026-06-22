@@ -6,8 +6,11 @@ import { listSessions } from './session-index'
 import { parseChunk } from './session-parser'
 import { SessionTailer } from './session-tailer'
 import { buildAgentTopology } from './agent-topology'
+import { computeUsageBreakdown } from './usage-breakdown'
+import { adviseUsage } from './usage-advisor'
 import { summarizeEvents } from '../../../shared/session-summary'
-import type { SessionEvent, SessionSummary, SessionEventsPush, AgentTopology } from '../../../shared/types'
+import { PRICING_UPDATED } from '../../../shared/data/model-pricing'
+import type { SessionEvent, SessionSummary, SessionEventsPush, AgentTopology, UsageReport } from '../../../shared/types'
 
 /**
  * 封装 spec014 的 listSessions + SessionTailer，对外是"订阅式"接口：
@@ -27,6 +30,16 @@ export class SessionMonitor {
   /** 一次性构建某 session 的 agent 拓扑（spec016）。 */
   topology(sessionFilePath: string): Promise<AgentTopology> {
     return buildAgentTopology(sessionFilePath)
+  }
+
+  /** 一次性算某 session 的 token 分项 + ECC 建议（spec017）。 */
+  async usage(sessionId: string, sessionFilePath: string): Promise<UsageReport> {
+    const [events, topology] = await Promise.all([
+      this.snapshot(sessionId, sessionFilePath),
+      buildAgentTopology(sessionFilePath),
+    ])
+    const breakdown = computeUsageBreakdown(events, topology)
+    return { breakdown, advice: adviseUsage(breakdown), pricingUpdated: PRICING_UPDATED }
   }
 
   /** 订阅拓扑：监听 `<sessionId>/workflows` 与 `subagents` 目录，文件变化去抖重建并 push。 */

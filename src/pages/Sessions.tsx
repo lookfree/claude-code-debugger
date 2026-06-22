@@ -5,6 +5,7 @@ import { SessionList } from '@/components/sessions/SessionList'
 import { ConversationReplay } from '@/components/sessions/ConversationReplay'
 import { SessionTimeline, TimelineLegend, sharedDomain } from '@/components/sessions/SessionTimeline'
 import { AgentTopologyView } from '@/components/sessions/AgentTopologyView'
+import { SessionUsage } from '@/components/sessions/SessionUsage'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
@@ -127,6 +128,7 @@ export default function Sessions() {
               <TabsTrigger value="replay">{t('tab.replay')}</TabsTrigger>
               <TabsTrigger value="timeline">{t('tab.timeline')}</TabsTrigger>
               <TabsTrigger value="topology">{t('tab.topology')}</TabsTrigger>
+              <TabsTrigger value="usage">{t('tab.usage')}</TabsTrigger>
             </TabsList>
             <TabsContent value="replay" className="flex-1 min-h-0 mt-2">
               <ConversationReplay events={primaryEvents} scrollToSeq={seekSeq} live={isLive} />
@@ -138,6 +140,11 @@ export default function Sessions() {
             <TabsContent value="topology" className="flex-1 min-h-0 mt-2">
               {primarySummary && tab === 'topology' && (
                 <AgentTopologyView sessionId={primaryId} sessionFilePath={primarySummary.filePath} />
+              )}
+            </TabsContent>
+            <TabsContent value="usage" className="flex-1 min-h-0 mt-2">
+              {primarySummary && tab === 'usage' && (
+                <SessionUsage sessionId={primaryId} sessionFilePath={primarySummary.filePath} />
               )}
             </TabsContent>
           </Tabs>

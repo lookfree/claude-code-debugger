@@ -22,7 +22,49 @@
   "tab": {
     "replay": "Replay",
     "timeline": "Timeline",
-    "topology": "Agents"
+    "topology": "Agents",
+    "usage": "Usage"
+  },
+  "usage": {
+    "loading": "Computing usage…",
+    "empty": "No token usage for this session",
+    "cost": "Est. cost",
+    "estimated": "Estimated; pricing updated {{date}}",
+    "output": "Output tokens",
+    "cacheRead": "Cache reads",
+    "cacheNote": "cheap (~0.1×), often dominate the raw token count",
+    "turns": "Turns",
+    "turnN": "turn {{n}}",
+    "pieTitle": "Cost by source (estimated)",
+    "spendTitle": "Cumulative spend",
+    "modelTable": "By model",
+    "model": "Model",
+    "adviceTitle": "Tuning suggestions",
+    "bucket": {
+      "base": "base",
+      "skills": "skills",
+      "subagents": "subagents",
+      "mcp": "MCP",
+      "plugins": "plugins"
+    }
+  },
+  "advice": {
+    "switch-sonnet": {
+      "title": "Switch to Sonnet — save ~{{pct}}%",
+      "detail": "Opus dominates this session; repricing those tokens at Sonnet rates saves about ${{usd}}."
+    },
+    "thinking-budget": {
+      "title": "High thinking ratio — lower MAX_THINKING_TOKENS",
+      "detail": "Thinking is ~{{pct}}% of output tokens; capping the budget could trim it."
+    },
+    "low-cache": {
+      "title": "Low prompt-cache hit rate",
+      "detail": "Only {{pct}}% of input is cache reads; check that the system prompt stays stable."
+    },
+    "subagents-heavy": {
+      "title": "Tokens concentrated in subagents",
+      "detail": "{{pct}}% of tokens are in subagents; consider converging the fan-out."
+    }
   },
   "topo": {
     "empty": "No subagents or workflows for this session",

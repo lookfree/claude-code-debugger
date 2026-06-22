@@ -24,6 +24,7 @@ import type {
   SessionEventsPush,
   AgentTopology,
   AgentTopologyPush,
+  UsageReport,
 } from '@shared/types'
 
 // Detect if running in Electron
@@ -721,6 +722,11 @@ export const api = {
       if (isElectron) return window.electronAPI.onSessionTopology(cb)
       console.warn('[API] Live topology is desktop-only')
       return () => {}
+    },
+    // spec017 token/usage 分项 + ECC 建议（一次性，Web 走只读路由）
+    usage: async (id: string, filePath: string): Promise<UsageReport> => {
+      if (isElectron) return window.electronAPI.getSessionUsage(id, filePath)
+      return httpGet<UsageReport>(`/api/sessions/${encodeURIComponent(id)}/usage`)
     },
   },
 

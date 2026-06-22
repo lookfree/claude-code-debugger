@@ -112,6 +112,57 @@ export interface TokenUsageRollup {
   cacheReadInputTokens: number
   /** 全部相加，UI 小计直接用 */
   totalTokens: number
+  /** 估算成本（USD），按 model 单价表算，标注"估算"（spec017）；summarizeEvents 不填 */
+  estimatedCostUsd?: number
+  /** 原始 model 串（如 'claude-opus-4-8[1m]'）→ 累计用量（spec017） */
+  byModel?: Record<string, TokenUsage>
+}
+
+/** 分项归因 bucket：把每次 assistant turn 的 token 归到一类（spec017，启发式估算）。 */
+export type UsageBucket = 'base' | 'skills' | 'subagents' | 'mcp' | 'plugins'
+
+export interface UsageSeriesPoint {
+  ts: string
+  bucket: UsageBucket
+  /** 原始 model 串 */
+  model: string
+  output: number
+  /** input + cacheCreation + cacheRead（输入侧合计） */
+  inputBillable: number
+  /** 该点估算成本（USD），后端按完整用量拆分算（cacheRead 0.1× 等已正确加权） */
+  costUsd: number
+}
+
+/** 一个（或多 session 合并）的 token 用量分项（spec017）。 */
+export interface UsageBreakdown {
+  byBucket: Record<UsageBucket, TokenUsageRollup>
+  /** 每个 assistant turn 一个点（subagents 每个 agent 一个点），按 ts 时序 */
+  series: UsageSeriesPoint[]
+  total: TokenUsageRollup
+  /** 辅助统计（驱动 advisor）：thinking 字符累计、工具调用计数、turn 数 */
+  thinkingChars: number
+  toolCounts: Record<string, number>
+  turnCount: number
+}
+
+/**
+ * ECC 调优建议。title/detail 不在后端定死（i18n 硬规则）——后端只给 id + 插值 params，
+ * 前端按 id 取 advice.<id>.title / advice.<id>.detail 用 t() 渲染。
+ */
+export interface UsageAdvice {
+  id: 'switch-sonnet' | 'thinking-budget' | 'low-cache' | 'subagents-heavy'
+  severity: 'info' | 'suggest' | 'warn'
+  params?: Record<string, string | number>
+  estimatedSavingUsd?: number
+  estimatedSavingPct?: number
+}
+
+/** session:usage 返回（breakdown + 建议）。 */
+export interface UsageReport {
+  breakdown: UsageBreakdown
+  advice: UsageAdvice[]
+  /** 单价表更新日期（UI 标注"估算"） */
+  pricingUpdated: string
 }
 
 /** 主→渲染推流 payload（session:events channel，spec015）。 */

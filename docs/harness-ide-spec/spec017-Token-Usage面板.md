@@ -101,14 +101,24 @@ preload + `src/lib/api.ts`：`session.usage(id, fp)` → `{ breakdown, advice }`
 
 ## 实现步骤
 
-- [ ] 1. `shared/types/session.ts`：`TokenUsageRollup` / `UsageBucket` / `UsageBreakdown` / `UsageAdvice`。
-- [ ] 2. `shared/data/model-pricing.ts`：model→单价表（标注来源与时效）。
-- [ ] 3. `electron/services/session/usage-breakdown.ts`：`computeUsageBreakdown`（归因 + 成本）。
-- [ ] 4. `electron/services/session/usage-advisor.ts`：`adviseUsage`（ECC 规则）。
-- [ ] 5. `electron/ipc/session.ts`：`session:usage` handler。
-- [ ] 6. preload + `src/lib/api.ts`：`session.usage`；`server/index.ts` 加 `GET /api/sessions/:id/usage`。
-- [ ] 7. `src/pages/Usage.tsx`（或 Tab）：recharts 饼图 / 面积图 / model 表 / 建议卡。
-- [ ] 8. i18n。
+- [x] 1. `shared/types/session.ts`：`TokenUsageRollup`(+estimatedCostUsd/byModel optional) / `UsageBucket` / `UsageSeriesPoint`(含 costUsd) / `UsageBreakdown` / `UsageAdvice` / `UsageReport`。
+- [x] 2. `shared/data/model-pricing.ts`：model→单价表（opus/sonnet/haiku/fable，cache write/read 分开计；标注 PRICING_UPDATED + "估算"）。
+- [x] 3. `electron/services/session/usage-breakdown.ts`：`computeUsageBreakdown`（按 turn 的 tool_use 归 base/skills/mcp/plugins、subagents 取拓扑 agent token、成本逐 model 算）。
+- [x] 4. `electron/services/session/usage-advisor.ts`：`adviseUsage`（4 条 ECC 规则，数值由单价比/占比算）。
+- [x] 5. `SessionMonitor.usage()` + `electron/ipc/session.ts`：`session:usage` handler。
+- [x] 6. preload + `src/lib/api.ts`：`session.usage`；`server/index.ts` 加 `GET /api/sessions/:id/usage`。
+- [x] 7. `src/components/sessions/SessionUsage.tsx`（Sessions「用量」Tab，recharts）：KPI / 成本饼图 / 累计花费面积图 / model 表 / 建议卡。
+- [x] 8. i18n（sessions namespace usage.*/advice.*，en/zh 69 键对齐）。
+
+### 实际实现（与方案偏差，已落地）
+
+- **UI 以「成本」为头条，不以 token 数**：实测 `total.totalTokens` 被 cacheRead 主导（OpsBot 子代理 96M cacheRead vs 26.5 万 in+out），单看 token 数失真。故饼图/KPI 走 `estimatedCostUsd`（cacheRead 已按 0.1× 正确加权），原始 token 仅在 model 表分列。
+- **subagents bucket ≈ wf totalTokens 的校验在「新 token」层**：subagents 的 in+out+cacheCreate(~7M) 与 `wf.totalTokens`(3.87M) 同量级；含 cacheRead 的全和(103M)是预期的廉价重复读，不参与该校验。
+- **`UsageAdvice` 改 id+params**（不在后端定死 title/detail 字符串），前端 `t(advice.<id>.title/detail, params)` 渲染——守 i18n 硬规则。
+- **plugins bucket 为占位（best-effort）**：归因需 plugin 工具名单（spec004/005 交叉），v1 未接 `pluginToolNames`，故 plugins 通常为空；base/skills/mcp/subagents 归因坚实。
+- **多 session 汇总未做**：仅当前选中 session（单选）。`computeUsageBreakdown` 已是纯函数，后续合并可叠加。
+- **入口是 Sessions 第四 Tab「用量」**，非独立页。
+- 归因为**按 turn 的工具调用估算**（token 按整 turn 计，无法切到单 skill 内部）——jsonl 粒度硬限制，UI 标注"估算"。
 
 ## 验收标准
 

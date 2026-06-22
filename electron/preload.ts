@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Skill, Agent, Hook, HookSettingsMatcher, MCPServers, MCPServerConfig, SlashCommand, ProjectContext, ConfigFile, Provider, HookExecutionLog, Marketplace, Plugin, PluginCliResult, PermissionModel, PermissionLevel, PermissionEffect, SettingsModel, SettingsLevel, SafetyToggles, WorktreeConfig, SessionSummary, SessionEvent, SessionEventsPush, AgentTopology, AgentTopologyPush } from '../shared/types'
+import type { Skill, Agent, Hook, HookSettingsMatcher, MCPServers, MCPServerConfig, SlashCommand, ProjectContext, ConfigFile, Provider, HookExecutionLog, Marketplace, Plugin, PluginCliResult, PermissionModel, PermissionLevel, PermissionEffect, SettingsModel, SettingsLevel, SafetyToggles, WorktreeConfig, SessionSummary, SessionEvent, SessionEventsPush, AgentTopology, AgentTopologyPush, UsageReport } from '../shared/types'
 
 console.log('[Preload] Script is loading...')
 
@@ -110,6 +110,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('session:events', handler)
   },
   getAgentTopology: (filePath: string): Promise<AgentTopology> => ipcRenderer.invoke('session:topology', filePath),
+  getSessionUsage: (id: string, filePath: string): Promise<UsageReport> => ipcRenderer.invoke('session:usage', id, filePath),
   subscribeTopology: (id: string, filePath: string): Promise<boolean> =>
     ipcRenderer.invoke('session:topology:subscribe', id, filePath),
   unsubscribeTopology: (id: string): Promise<boolean> => ipcRenderer.invoke('session:topology:unsubscribe', id),
@@ -263,6 +264,7 @@ declare global {
       unsubscribeSession: (id: string) => Promise<boolean>
       onSessionEvents: (callback: (payload: SessionEventsPush) => void) => () => void
       getAgentTopology: (filePath: string) => Promise<AgentTopology>
+      getSessionUsage: (id: string, filePath: string) => Promise<UsageReport>
       subscribeTopology: (id: string, filePath: string) => Promise<boolean>
       unsubscribeTopology: (id: string) => Promise<boolean>
       onSessionTopology: (callback: (payload: AgentTopologyPush) => void) => () => void
