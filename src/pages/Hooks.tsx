@@ -905,7 +905,7 @@ export default function Hooks() {
                 </TabsContent>
 
                 <TabsContent value="sandbox" className="space-y-4 mt-4">
-                  <HookSandbox hook={selectedHook} />
+                  <HookSandbox key={selectedHook.name} hook={selectedHook} />
                 </TabsContent>
 
                 <TabsContent value="logs" className="space-y-4 mt-4">

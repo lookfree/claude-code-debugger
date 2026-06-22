@@ -36,10 +36,10 @@ interface Props {
 type Decision = HookDryRunResult['decision']
 
 const DECISION_CONFIG: Record<Decision, { label: string; icon: React.ElementType; className: string }> = {
-  allow:     { label: 'decision.allow',     icon: CheckCircle,     className: 'text-green-600 border-green-600' },
-  block:     { label: 'decision.block',     icon: XCircle,         className: 'text-red-600 border-red-600' },
-  transform: { label: 'decision.transform', icon: ArrowLeftRight,  className: 'text-blue-600 border-blue-600' },
-  none:      { label: 'decision.none',      icon: Minus,           className: 'text-muted-foreground' },
+  allow:     { label: 'sandbox.decision.allow',     icon: CheckCircle,     className: 'text-green-600 border-green-600' },
+  block:     { label: 'sandbox.decision.block',     icon: XCircle,         className: 'text-red-600 border-red-600' },
+  transform: { label: 'sandbox.decision.transform', icon: ArrowLeftRight,  className: 'text-blue-600 border-blue-600' },
+  none:      { label: 'sandbox.decision.none',      icon: Minus,           className: 'text-muted-foreground' },
 }
 
 export function HookSandbox({ hook }: Props) {
@@ -143,7 +143,7 @@ export function HookSandbox({ hook }: Props) {
             <SelectContent>
               {hook.actions.map((a, i) => (
                 <SelectItem key={i} value={String(i)}>
-                  [{a.type}] {a.command ?? a.url ?? a.prompt?.slice(0, 40) ?? `Action ${i + 1}`}
+                  [{a.type}] {a.command ?? a.url ?? a.prompt?.slice(0, 40) ?? t('sandbox.actionFallback', { index: i + 1 })}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -195,7 +195,7 @@ export function HookSandbox({ hook }: Props) {
               max={30000}
               step={1000}
               value={timeoutMs}
-              onChange={(e) => setTimeoutMs(Number(e.target.value))}
+              onChange={(e) => setTimeoutMs(Math.max(1000, Math.min(Number(e.target.value) || 1000, 30000)))}
             />
           </div>
           <div className="space-y-1">

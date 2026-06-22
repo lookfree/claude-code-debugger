@@ -305,6 +305,7 @@
     }
   },
   "sandbox": {
+    "actionFallback": "动作 {{index}}",
     "runBtn": "运行沙箱",
     "running": "运行中...",
     "cancel": "取消",

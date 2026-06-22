@@ -305,6 +305,7 @@
     }
   },
   "sandbox": {
+    "actionFallback": "Action {{index}}",
     "runBtn": "Run Sandbox",
     "running": "Running...",
     "cancel": "Cancel",

@@ -65,6 +65,11 @@ async function runCommand(
   const tmpDir = path.join(os.tmpdir(), `cc-hook-dryrun-${process.pid}-${Date.now()}`)
   try { fs.mkdirSync(tmpDir, { recursive: true }) } catch { /* already exists */ }
 
+  if (!action.command) {
+    try { fs.rmSync(tmpDir, { recursive: true }) } catch { /* */ }
+    return { ...base, exitCode: null, stdout: '', stderr: '', decision: 'none', error: 'no_command', durationMs: Date.now() - startMs, timedOut: false }
+  }
+
   // 白名单 env：只透传 PATH/HOME/TMPDIR，不透传 token/key
   const safeEnv: NodeJS.ProcessEnv = {
     PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
@@ -72,8 +77,11 @@ async function runCommand(
     TMPDIR: os.tmpdir(),
     TERM: 'dumb',
     HOOK_EVENT_NAME: base.hookType,
+    HOOK_NAME: base.hookName,
+    HOOK_TYPE: base.hookType,
   }
 
+  const command = action.command
   return new Promise<HookDryRunResult>((resolve) => {
     let stdout = ''
     let stderr = ''
@@ -81,8 +89,8 @@ async function runCommand(
     let totalBytes = 0
 
     const proc = action.args
-      ? spawn(action.command ?? '', action.args, { shell: false, cwd: tmpDir, env: safeEnv })
-      : spawn(action.command ?? '', { shell: true, cwd: tmpDir, env: safeEnv })
+      ? spawn(command, action.args, { shell: false, cwd: tmpDir, env: safeEnv })
+      : spawn(command, { shell: true, cwd: tmpDir, env: safeEnv })
 
     const timer = setTimeout(() => {
       timedOut = true
@@ -101,13 +109,17 @@ async function runCommand(
     proc.stdout?.on('data', (c: Buffer) => onData(c, 'out'))
     proc.stderr?.on('data', (c: Buffer) => onData(c, 'err'))
 
+    const cleanup = () => { try { fs.rmSync(tmpDir, { recursive: true }) } catch { /* */ } }
+
     proc.on('close', (exitCode) => {
       clearTimeout(timer)
+      cleanup()
       const { decision, blockReason, transformedOutput } = parseDecision(stdout, exitCode)
       resolve({ ...base, exitCode, stdout, stderr, decision, blockReason, transformedOutput, durationMs: Date.now() - startMs, timedOut })
     })
     proc.on('error', (err) => {
       clearTimeout(timer)
+      cleanup()
       resolve({ ...base, exitCode: null, stdout, stderr, decision: 'none', error: err.message, durationMs: Date.now() - startMs, timedOut })
     })
   })
@@ -134,7 +146,21 @@ async function runHttp(
     const res = await fetch(url, { method, headers, body: method !== 'GET' ? body : undefined, signal: ctrl.signal })
     clearTimeout(timer)
     const responseBody = await res.text()
-    const { decision, blockReason, transformedOutput } = parseDecision(responseBody, res.ok ? 0 : 1)
+    if (!res.ok) {
+      // Non-2xx is a transport/server error, not a deliberate block — don't feed to parseDecision
+      let decision: HookDryRunResult['decision'] = 'none'
+      let blockReason: string | undefined
+      const trimmed = responseBody.trim()
+      if (trimmed.startsWith('{')) {
+        try {
+          const p = JSON.parse(trimmed) as Record<string, unknown>
+          if (p.decision === 'block') { decision = 'block'; blockReason = (p.reason ?? p.message) as string | undefined }
+        } catch { /* not JSON */ }
+      }
+      const httpErr = decision === 'none' ? `HTTP ${res.status}` : undefined
+      return { ...base, exitCode: res.status, stdout: responseBody, stderr: '', decision, blockReason, transformedOutput: undefined, durationMs: Date.now() - startMs, timedOut: false, httpStatus: res.status, httpResponseBody: responseBody, error: httpErr }
+    }
+    const { decision, blockReason, transformedOutput } = parseDecision(responseBody, 0)
     return { ...base, exitCode: res.status, stdout: responseBody, stderr: '', decision, blockReason, transformedOutput, durationMs: Date.now() - startMs, timedOut: false, httpStatus: res.status, httpResponseBody: responseBody }
   } catch (err) {
     const e = err as Error
@@ -149,7 +175,7 @@ async function runHttp(
  */
 export async function dryRunHook(hook: Hook, action: HookAction, input: HookSimInput): Promise<HookDryRunResult> {
   const actionType = resolveActionType(action)
-  const timeoutMs = Math.min(input.timeoutMs ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS)
+  const timeoutMs = Math.min(Math.max(input.timeoutMs ?? DEFAULT_TIMEOUT_MS, 1000), MAX_TIMEOUT_MS)
   const startMs = Date.now()
 
   const base = {
