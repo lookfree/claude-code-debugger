@@ -22,6 +22,9 @@ interface Props {
 /** 直方图分桶数（固定，使比对模式各 session 在同一时间域下桶对齐）。 */
 const BUCKETS = 60
 
+/** 柱区像素高度（用像素而非 % —— flex 子项的 % 高度在 h-full 父级下常解析失败而塌成 0）。 */
+const BAR_H = 88
+
 /** 参与堆叠统计的事件类型（按从底到顶的堆叠顺序）；meta/system 视为噪声不计。 */
 const STACK_KINDS: Array<'user_turn' | 'assistant_turn' | 'tool_use' | 'tool_result'> = [
   'user_turn',
@@ -94,18 +97,27 @@ export function SessionTimeline({ events, domain, onSeek, label }: Props) {
     <div className="py-2">
       {label && <div className="text-xs font-medium mb-1 truncate">{label}</div>}
       {/* 密度直方图：按时间分桶，柱高=该桶事件数，按类型堆叠；空桶留白=活动间隙 */}
-      <div className="flex items-end gap-px h-24 bg-muted/30 rounded border border-border/50 p-1">
+      <div
+        className="flex items-end gap-px bg-muted/30 rounded border border-border/50 p-1"
+        style={{ height: BAR_H + 8 }}
+      >
         {buckets.map((b, i) => (
           <button
             key={i}
             disabled={b.total === 0}
             onClick={() => b.firstSeq !== undefined && onSeek?.(b.firstSeq)}
             title={bucketTitle(b, t)}
-            className="flex-1 h-full flex flex-col-reverse hover:opacity-70 disabled:pointer-events-none"
+            style={{ height: BAR_H }}
+            className="flex-1 flex flex-col-reverse overflow-hidden hover:opacity-70 disabled:pointer-events-none"
           >
             {STACK_KINDS.map((k) =>
               b.counts[k] ? (
-                <div key={k} className={KIND_COLOR[k]} style={{ height: `${(b.counts[k] / maxCount) * 100}%` }} />
+                // 非零桶至少 1px，避免被峰值桶压成不可见
+                <div
+                  key={k}
+                  className={KIND_COLOR[k]}
+                  style={{ height: Math.max(1, Math.round((b.counts[k] / maxCount) * BAR_H)) }}
+                />
               ) : null
             )}
           </button>
