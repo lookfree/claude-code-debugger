@@ -28,6 +28,8 @@ import type {
   AgentTopologyPush,
   UsageReport,
 } from '@shared/types'
+import type { MCPHealth } from '@shared/types/mcp-health'
+import type { MemoryStore, MemorySnapshot, DreamChange } from '@shared/types/memory'
 
 // Detect if running in Electron
 const isElectron = typeof window !== 'undefined' && typeof window.electronAPI !== 'undefined'
@@ -399,6 +401,14 @@ export const api = {
         return httpPost(`/api/mcp/${encodeURIComponent(name)}/test`)
       }
     },
+    health: async (): Promise<MCPHealth[]> => {
+      if (isElectron) return window.electronAPI.getMCPHealth()
+      return httpGet<MCPHealth[]>('/api/mcp/health')
+    },
+    probe: async (name: string): Promise<MCPHealth> => {
+      if (isElectron) return window.electronAPI.probeMCPServer(name)
+      throw new Error('mcp_probe_desktop_only')
+    },
   },
 
   // Commands
@@ -735,6 +745,33 @@ export const api = {
     usage: async (id: string, filePath: string): Promise<UsageReport> => {
       if (isElectron) return window.electronAPI.getSessionUsage(id, filePath)
       return httpGet<UsageReport>(`/api/sessions/${encodeURIComponent(id)}/usage`)
+    },
+  },
+
+  // spec021 memory
+  memory: {
+    list: async (): Promise<MemoryStore[]> => {
+      if (isElectron) return window.electronAPI.listMemoryStores()
+      return httpGet<MemoryStore[]>('/api/memory')
+    },
+    read: async (encodedCwd: string): Promise<MemoryStore | null> => {
+      if (isElectron) return window.electronAPI.readMemoryStore(encodedCwd)
+      return httpGet<MemoryStore | null>(`/api/memory/${encodeURIComponent(encodedCwd)}`)
+    },
+    snapshot: async (encodedCwd: string): Promise<MemorySnapshot> => {
+      if (isElectron) return window.electronAPI.snapshotMemory(encodedCwd)
+      throw new Error('memory_snapshot_desktop_only')
+    },
+    listSnapshots: async (encodedCwd: string): Promise<MemorySnapshot[]> => {
+      if (isElectron) return window.electronAPI.listMemorySnapshots(encodedCwd)
+      return []
+    },
+    deleteSnapshot: async (id: string): Promise<void> => {
+      if (isElectron) return window.electronAPI.deleteMemorySnapshot(id)
+    },
+    diff: async (beforeId: string, afterId: string): Promise<DreamChange[]> => {
+      if (isElectron) return window.electronAPI.diffMemorySnapshots(beforeId, afterId)
+      throw new Error('memory_diff_desktop_only')
     },
   },
 

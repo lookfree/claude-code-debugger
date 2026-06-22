@@ -14,6 +14,7 @@
     "hooks": "Hooks",
     "permissions": "Permissions",
     "models": "AI Models",
+    "memory": "Memory",
     "graph": "Dependency Graph",
     "settings": "Settings"
   }

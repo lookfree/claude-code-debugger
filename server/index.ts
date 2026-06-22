@@ -314,6 +314,43 @@ app.post('/api/mcp/:name/test', asyncHandler(async (_req, res) => {
   })
 }))
 
+app.get('/api/mcp/health', asyncHandler(async (_req, res) => {
+  // Web mode: return callStats from jsonl only — no live probing
+  const { computeMCPCallStats } = await import('../electron/services/mcp/mcp-call-stats')
+  const { parseLine } = await import('../electron/services/session/session-parser')
+  const { listSessions } = await import('../electron/services/session/session-index')
+  const fsPromises = await import('fs/promises')
+  const sessions = await listSessions()
+  const events = (await Promise.all(sessions.map(async (s) => {
+    try {
+      const content = await fsPromises.readFile(s.filePath, 'utf-8')
+      return content.split('\n').filter(Boolean).flatMap((l, i) => parseLine(l, i))
+    } catch { return [] }
+  }))).flat()
+  const statsMap = computeMCPCallStats(events)
+  const servers = await fileManager.getMCPServers()
+  const results = Object.keys(servers).map((name) => ({
+    name,
+    transport: 'unknown' as const,
+    state: 'unknown' as const,
+    callStats: statsMap[name] ?? { total: 0, success: 0, failed: 0, byTool: {} },
+  }))
+  res.json(results)
+}))
+
+// ============ Memory API (read-only, web mode) ============
+app.get('/api/memory', asyncHandler(async (_req, res) => {
+  const { listMemoryStores } = await import('../electron/services/memory/memory-reader')
+  res.json(await listMemoryStores())
+}))
+
+app.get('/api/memory/:encodedCwd', asyncHandler(async (req, res) => {
+  const { readMemoryStore } = await import('../electron/services/memory/memory-reader')
+  const store = await readMemoryStore(decodeURIComponent(req.params.encodedCwd))
+  if (store) res.json(store)
+  else res.status(404).json({ error: 'not_found' })
+}))
+
 // ============ Commands API ============
 app.get('/api/commands', asyncHandler(async (_req, res) => {
   console.log('[API] GET /api/commands')

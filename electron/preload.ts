@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { Skill, Agent, Hook, HookSettingsMatcher, MCPServers, MCPServerConfig, SlashCommand, ProjectContext, ConfigFile, Provider, HookExecutionLog, HookSimInput, HookDryRunResult, Marketplace, Plugin, PluginCliResult, PermissionModel, PermissionLevel, PermissionEffect, SettingsModel, SettingsLevel, SafetyToggles, WorktreeConfig, SessionSummary, SessionEvent, SessionEventsPush, AgentTopology, AgentTopologyPush, UsageReport } from '../shared/types'
+import type { MCPHealth } from '../shared/types/mcp-health'
+import type { MemoryStore, MemorySnapshot, DreamChange } from '../shared/types/memory'
 
 console.log('[Preload] Script is loading...')
 
@@ -77,6 +79,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveMCPServer: (name: string, config: MCPServerConfig, location?: 'user' | 'project'): Promise<void> => ipcRenderer.invoke('mcp:save', name, config, location),
   deleteMCPServer: (name: string): Promise<void> => ipcRenderer.invoke('mcp:delete', name),
   testMCPConnection: (name: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke('mcp:test', name),
+  getMCPHealth: (): Promise<MCPHealth[]> => ipcRenderer.invoke('mcp:health'),
+  probeMCPServer: (name: string): Promise<MCPHealth> => ipcRenderer.invoke('mcp:probe', name),
+
+  // Memory
+  listMemoryStores: (): Promise<MemoryStore[]> => ipcRenderer.invoke('memory:list'),
+  readMemoryStore: (encodedCwd: string): Promise<MemoryStore | null> => ipcRenderer.invoke('memory:read', encodedCwd),
+  snapshotMemory: (encodedCwd: string): Promise<MemorySnapshot> => ipcRenderer.invoke('memory:snapshot', encodedCwd),
+  listMemorySnapshots: (encodedCwd: string): Promise<MemorySnapshot[]> => ipcRenderer.invoke('memory:listSnapshots', encodedCwd),
+  deleteMemorySnapshot: (id: string): Promise<void> => ipcRenderer.invoke('memory:deleteSnapshot', id),
+  diffMemorySnapshots: (beforeId: string, afterId: string): Promise<DreamChange[]> => ipcRenderer.invoke('memory:diff', beforeId, afterId),
 
   // Commands
   getCommands: (): Promise<SlashCommand[]> => ipcRenderer.invoke('commands:getAll'),
@@ -240,6 +252,16 @@ declare global {
       saveMCPServer: (name: string, config: MCPServerConfig, location?: 'user' | 'project') => Promise<void>
       deleteMCPServer: (name: string) => Promise<void>
       testMCPConnection: (name: string) => Promise<{ success: boolean; message?: string }>
+      getMCPHealth: () => Promise<MCPHealth[]>
+      probeMCPServer: (name: string) => Promise<MCPHealth>
+
+      // Memory
+      listMemoryStores: () => Promise<MemoryStore[]>
+      readMemoryStore: (encodedCwd: string) => Promise<MemoryStore | null>
+      snapshotMemory: (encodedCwd: string) => Promise<MemorySnapshot>
+      listMemorySnapshots: (encodedCwd: string) => Promise<MemorySnapshot[]>
+      deleteMemorySnapshot: (id: string) => Promise<void>
+      diffMemorySnapshots: (beforeId: string, afterId: string) => Promise<DreamChange[]>
 
       // Commands
       getCommands: () => Promise<SlashCommand[]>

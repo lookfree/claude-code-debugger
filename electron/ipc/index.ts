@@ -13,6 +13,7 @@ import { registerProviderHandlers } from './providers'
 import { registerPluginHandlers } from './plugins'
 import { registerPermissionHandlers } from './permissions'
 import { registerSettingsHandlers } from './settings'
+import { registerMemoryHandlers } from './memory'
 
 export function registerIPCHandlers(ipcMain: IpcMain, fileManager: FileManager) {
   registerSkillHandlers(ipcMain, fileManager)
@@ -28,4 +29,5 @@ export function registerIPCHandlers(ipcMain: IpcMain, fileManager: FileManager) 
   registerPluginHandlers(ipcMain, fileManager)
   registerPermissionHandlers(ipcMain, fileManager)
   registerSettingsHandlers(ipcMain, fileManager)
+  registerMemoryHandlers(ipcMain)
 }

@@ -47,6 +47,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getMCPServerSources: () => ipcRenderer.invoke('mcp:getSources'),
   deleteMCPServer: (name) => ipcRenderer.invoke('mcp:delete', name),
   testMCPConnection: (name) => ipcRenderer.invoke('mcp:test', name),
+  getMCPHealth: () => ipcRenderer.invoke('mcp:health'),
+  probeMCPServer: (name) => ipcRenderer.invoke('mcp:probe', name),
+
+  // Memory
+  listMemoryStores: () => ipcRenderer.invoke('memory:list'),
+  readMemoryStore: (encodedCwd) => ipcRenderer.invoke('memory:read', encodedCwd),
+  snapshotMemory: (encodedCwd) => ipcRenderer.invoke('memory:snapshot', encodedCwd),
+  listMemorySnapshots: (encodedCwd) => ipcRenderer.invoke('memory:listSnapshots', encodedCwd),
+  deleteMemorySnapshot: (id) => ipcRenderer.invoke('memory:deleteSnapshot', id),
+  diffMemorySnapshots: (beforeId, afterId) => ipcRenderer.invoke('memory:diff', beforeId, afterId),
 
   // Commands
   getCommands: () => ipcRenderer.invoke('commands:getAll'),
