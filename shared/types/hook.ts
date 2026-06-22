@@ -30,6 +30,12 @@ export type HookActionType = 'command' | 'http' | 'prompt'
 /** 兼容旧抽象动词（迁移期保留，读取时映射到 command/http/prompt） */
 export type LegacyHookActionType = 'validate' | 'transform' | 'notify' | 'block' | 'execute'
 
+/** 将 LegacyHookActionType 归一到 HookActionType */
+export function resolveActionType(action: { type: HookActionType | LegacyHookActionType }): HookActionType {
+  if (action.type === 'http' || action.type === 'prompt') return action.type
+  return 'command'
+}
+
 export interface HookConditions {
   commands?: string[]
   branches?: string[]

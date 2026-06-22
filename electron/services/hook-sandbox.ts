@@ -2,11 +2,14 @@ import { spawn } from 'child_process'
 import os from 'os'
 import path from 'path'
 import fs from 'fs'
-import type { Hook, HookAction, HookSimInput, HookDryRunResult, HookActionType } from '../../shared/types'
+import type { Hook, HookAction, HookSimInput, HookDryRunResult } from '../../shared/types'
+import { resolveActionType } from '../../shared/types'
 
 const DEFAULT_TIMEOUT_MS = 10_000
 const MAX_TIMEOUT_MS = 30_000
 const MAX_OUTPUT_BYTES = 1024 * 1024 // 1 MB
+const HOME = os.homedir()
+const TMPDIR = os.tmpdir()
 
 /** 构造 Claude Code 传给 hook 的 stdin JSON */
 function buildInputJson(hook: Hook, input: HookSimInput): Record<string, unknown> {
@@ -14,7 +17,7 @@ function buildInputJson(hook: Hook, input: HookSimInput): Record<string, unknown
     session_id: input.sessionId ?? 'dryrun-session',
     transcript_path: '/dev/null',
     hook_event_name: hook.type,
-    cwd: input.cwd ?? os.homedir(),
+    cwd: input.cwd ?? HOME,
   }
   if (input.toolName !== undefined) obj.tool_name = input.toolName
   if (input.toolInput !== undefined) obj.tool_input = input.toolInput
@@ -49,32 +52,25 @@ function parseDecision(
   return { decision: 'none' }
 }
 
-function resolveActionType(action: HookAction): HookActionType {
-  if (action.type === 'http' || action.type === 'prompt') return action.type
-  return 'command'
-}
-
 async function runCommand(
   action: HookAction,
   inputJson: Record<string, unknown>,
   timeoutMs: number,
-  maxBytes: number,
   startMs: number,
   base: Omit<HookDryRunResult, 'decision' | 'blockReason' | 'transformedOutput' | 'durationMs' | 'timedOut'>
 ): Promise<HookDryRunResult> {
-  const tmpDir = path.join(os.tmpdir(), `cc-hook-dryrun-${process.pid}-${Date.now()}`)
-  try { fs.mkdirSync(tmpDir, { recursive: true }) } catch { /* already exists */ }
-
   if (!action.command) {
-    try { fs.rmSync(tmpDir, { recursive: true }) } catch { /* */ }
     return { ...base, exitCode: null, stdout: '', stderr: '', decision: 'none', error: 'no_command', durationMs: Date.now() - startMs, timedOut: false }
   }
+
+  const tmpDir = path.join(TMPDIR, `cc-hook-dryrun-${process.pid}-${Date.now()}`)
+  try { fs.mkdirSync(tmpDir, { recursive: true }) } catch { /* already exists */ }
 
   // 白名单 env：只透传 PATH/HOME/TMPDIR，不透传 token/key
   const safeEnv: NodeJS.ProcessEnv = {
     PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
-    HOME: os.homedir(),
-    TMPDIR: os.tmpdir(),
+    HOME,
+    TMPDIR,
     TERM: 'dumb',
     HOOK_EVENT_NAME: base.hookType,
     HOOK_NAME: base.hookName,
@@ -102,7 +98,7 @@ async function runCommand(
 
     const onData = (chunk: Buffer, target: 'out' | 'err') => {
       totalBytes += chunk.length
-      if (totalBytes > maxBytes) { try { proc.kill('SIGKILL') } catch { /* */ }; return }
+      if (totalBytes > MAX_OUTPUT_BYTES) { try { proc.kill('SIGKILL') } catch { /* */ }; return }
       if (target === 'out') stdout += chunk.toString()
       else stderr += chunk.toString()
     }
@@ -201,5 +197,5 @@ export async function dryRunHook(hook: Hook, action: HookAction, input: HookSimI
     return runHttp(action, inputJson, timeoutMs, startMs, base)
   }
 
-  return runCommand(action, inputJson, timeoutMs, MAX_OUTPUT_BYTES, startMs, base)
+  return runCommand(action, inputJson, timeoutMs, startMs, base)
 }

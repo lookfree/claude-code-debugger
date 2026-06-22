@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import type { Hook, HookAction, HookSimInput, HookDryRunResult } from '@shared/types'
+import { resolveActionType } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -52,7 +53,6 @@ export function HookSandbox({ hook }: Props) {
   const [promptText, setPromptText] = useState('Hello, this is a test prompt')
   const [messageText, setMessageText] = useState('Hello from Claude')
   const [sessionId, setSessionId] = useState('dryrun-session')
-  const [cwd] = useState('')
   const [timeoutMs, setTimeoutMs] = useState(10000)
   const [allowNetwork, setAllowNetwork] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
@@ -60,15 +60,13 @@ export function HookSandbox({ hook }: Props) {
   const [result, setResult] = useState<HookDryRunResult | null>(null)
 
   const selectedAction: HookAction | undefined = hook.actions?.[actionIndex]
-  const actionType = selectedAction?.type === 'http' || selectedAction?.type === 'prompt'
-    ? selectedAction.type : 'command'
+  const actionType = selectedAction ? resolveActionType(selectedAction) : 'command'
   const hookType = hook.type
 
   function buildInput(): HookSimInput {
     const base: HookSimInput = {
       hookType,
       sessionId: sessionId || 'dryrun-session',
-      cwd: cwd || undefined,
       timeoutMs,
       allowNetwork,
     }
