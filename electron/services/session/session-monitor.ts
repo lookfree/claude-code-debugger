@@ -121,7 +121,9 @@ export class SessionMonitor {
     return valid.map((s) => {
       const latest = latestMtimeByCwd.get(s.cwd) ?? 0
       const mtime = mtimeById.get(s.sessionId) ?? 0
-      return mtime < latest ? { ...s, status: 'completed' as const } : s
+      // 非最新且非 waiting → CLI 已关闭，标为 completed；waiting 保留（工具调用仍有意义）
+      if (mtime < latest && s.status !== 'waiting') return { ...s, status: 'completed' as const }
+      return s
     })
   }
 
